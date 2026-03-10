@@ -1,0 +1,53 @@
+# Dependencies
+node_modules/
+*/node_modules/
+**/node_modules/
+
+# Build outputs
+dist/
+*/dist/
+**/dist/
+.vite/
+*/.vite/
+**/.vite/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+*/.env
+**/.env
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+!database/scripts/cantik_ai.db
+
+# Uploads
+uploads/*
+!uploads/.gitkeep
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Backups
+*.backup
+*.tar.gz
+*.zip
+
+# Temporary files
+*.tmp
+*.temp
