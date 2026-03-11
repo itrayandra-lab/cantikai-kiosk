@@ -10,8 +10,8 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Base upload directory
-const UPLOAD_BASE = path.join(__dirname, '..', '..', '..', 'uploads', 'images');
+// Base upload directory - inside backend folder
+const UPLOAD_BASE = path.join(__dirname, '..', '..', 'uploads', 'assets');
 
 /**
  * Ensure directory exists
@@ -29,8 +29,8 @@ function normalizeRelativePath(relativePath) {
 /**
  * Save base64 image to file system
  * @param {string} base64Image - Base64 encoded image (with or without data:image prefix)
- * @param {number} userId - User ID
- * @param {string} type - Image type: 'original' or 'visualization'
+ * @param {number|string} userId - User ID or identifier
+ * @param {string} type - Image type: 'original', 'visualization', etc.
  * @returns {string} - Relative file path
  */
 export function saveImageToFile(base64Image, userId, type = 'original') {
@@ -40,21 +40,20 @@ export function saveImageToFile(base64Image, userId, type = 'original') {
             ? base64Image.split(',')[1] 
             : base64Image;
         
-        // Create directory structure: uploads/images/{type}/{userId}/
-        const userDir = path.join(UPLOAD_BASE, type, userId.toString());
-        ensureDirectoryExists(userDir);
+        // Ensure uploads/assets directory exists
+        ensureDirectoryExists(UPLOAD_BASE);
         
-        // Generate filename with timestamp
+        // Generate filename: userId_type_timestamp.png
         const timestamp = Date.now();
-        const filename = `${timestamp}.jpg`;
-        const filePath = path.join(userDir, filename);
+        const filename = `${userId}_${type}_${timestamp}.png`;
+        const filePath = path.join(UPLOAD_BASE, filename);
         
-        // Save image
+        // Save image as PNG
         const buffer = Buffer.from(base64Data, 'base64');
         fs.writeFileSync(filePath, buffer);
         
-        // Return relative path (for database storage)
-        const relativePath = normalizeRelativePath(path.join('uploads', 'images', type, userId.toString(), filename));
+        // Return relative path from backend root
+        const relativePath = normalizeRelativePath(path.join('uploads', 'assets', filename));
         
         console.log(`✅ Image saved: ${relativePath}`);
         return relativePath;
@@ -73,7 +72,7 @@ export function deleteImageFile(relativePath) {
     try {
         const normalizedPath = normalizeRelativePath(relativePath);
         if (!normalizedPath) return;
-        const fullPath = path.join(__dirname, '..', '..', '..', normalizedPath);
+        const fullPath = path.join(__dirname, '..', '..', normalizedPath);
         if (fs.existsSync(fullPath)) {
             fs.unlinkSync(fullPath);
             console.log(`✅ Image deleted: ${normalizedPath}`);
@@ -91,14 +90,19 @@ export function deleteImageFile(relativePath) {
 export function readImageAsBase64(relativePath) {
     try {
         const normalizedPath = normalizeRelativePath(relativePath);
-        const fullPath = path.join(__dirname, '..', '..', '..', normalizedPath);
+        const fullPath = path.join(__dirname, '..', '..', normalizedPath);
         if (!fs.existsSync(fullPath)) {
             throw new Error('Image file not found');
         }
         
         const buffer = fs.readFileSync(fullPath);
         const base64 = buffer.toString('base64');
-        return `data:image/jpeg;base64,${base64}`;
+        
+        // Detect image type from file extension
+        const ext = path.extname(normalizedPath).toLowerCase();
+        const mimeType = ext === '.png' ? 'image/png' : 'image/jpeg';
+        
+        return `data:${mimeType};base64,${base64}`;
         
     } catch (error) {
         console.error('❌ Error reading image:', error);

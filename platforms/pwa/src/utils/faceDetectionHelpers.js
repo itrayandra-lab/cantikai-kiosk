@@ -147,10 +147,21 @@ export const detectFilter = (videoElement, landmarks, width, height) => {
 export const drawFaceContour = (canvasCtx, landmarks, width, height, isOptimal) => {
     const color = isOptimal ? 'rgba(255, 255, 255, 0.95)' : 'rgba(255, 190, 215, 0.85)';
     
+    // Detect orientation
+    const isPortrait = window.innerHeight > window.innerWidth;
+    
     canvasCtx.save();
     canvasCtx.strokeStyle = color;
-    canvasCtx.lineWidth = 2;
-    canvasCtx.shadowBlur = 8;
+    
+    // Different line width and shadow for portrait vs landscape
+    if (isPortrait) {
+        canvasCtx.lineWidth = 1;
+        canvasCtx.shadowBlur = 2;
+    } else {
+        canvasCtx.lineWidth = 2;
+        canvasCtx.shadowBlur = 8;
+    }
+    
     canvasCtx.shadowColor = isOptimal ? 'rgba(255, 255, 255, 0.5)' : 'rgba(255, 190, 215, 0.5)';
     
     // Use MediaPipe's FACE_OVAL connections for perfect fit
@@ -178,6 +189,9 @@ export const drawFaceContour = (canvasCtx, landmarks, width, height, isOptimal) 
 export const drawKeyPoints = (canvasCtx, landmarks, width, height, isOptimal) => {
     const color = isOptimal ? 'rgba(255, 255, 255, 0.9)' : 'rgba(255, 190, 215, 0.8)';
     
+    // Detect orientation
+    const isPortrait = window.innerHeight > window.innerWidth;
+    
     // Draw ALL landmarks as small dots for maximum accuracy
     canvasCtx.save();
     canvasCtx.fillStyle = color;
@@ -188,9 +202,13 @@ export const drawKeyPoints = (canvasCtx, landmarks, width, height, isOptimal) =>
         const x = lm.x * width;
         const y = lm.y * height;
         
-        // Draw small dot
+        // Draw small dot - different size for portrait vs landscape
         canvasCtx.beginPath();
-        canvasCtx.arc(x, y, 1.5, 0, 2 * Math.PI);
+        if (isPortrait) {
+            canvasCtx.arc(x, y, 0.4, 0, 1 * Math.PI);
+        } else {
+            canvasCtx.arc(x, y, 1.5, 0, 2 * Math.PI);
+        }
         canvasCtx.fill();
     });
     

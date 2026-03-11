@@ -198,8 +198,10 @@ const ScannerEnhanced = () => {
                 if (videoRef.current) {
                     // Detect orientation and set appropriate resolution
                     const isPortrait = window.innerHeight > window.innerWidth;
-                    const cameraWidth = isPortrait ? 720 : 1280;
-                    const cameraHeight = isPortrait ? 1280 : 720;
+                    console.log(`📱 Is Portrait: ${isPortrait}`);
+                    
+                    const cameraWidth = isPortrait ? 0 : 1280;
+                    const cameraHeight = isPortrait ? 0 : 720;
                     
                     console.log(`📱 Orientation: ${isPortrait ? 'Portrait' : 'Landscape'}`);
                     console.log(`📹 Camera Resolution: ${cameraWidth}x${cameraHeight}`);

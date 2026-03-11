@@ -67,7 +67,7 @@ const KIOSK_PUBLIC_BASE_URL = String(process.env.KIOSK_PUBLIC_BASE_URL || `http:
 const KIOSK_RESULT_TOKEN_EXPIRES_DAYS = Math.max(1, Math.min(365, Number.parseInt(process.env.KIOSK_RESULT_TOKEN_EXPIRES_DAYS || '30', 10) || 30));
 const WHATSAPP_WEBHOOK_URL = String(process.env.WHATSAPP_WEBHOOK_URL || '').trim();
 const WHATSAPP_WEBHOOK_SECRET = String(process.env.WHATSAPP_WEBHOOK_SECRET || '').trim();
-const UPLOADS_ROOT_PATH = path.resolve(__dirname, '..', '..', 'uploads');
+const UPLOADS_ROOT_PATH = path.resolve(__dirname, '..', 'uploads');
 
 // Test MySQL connection on startup
 testConnection();
@@ -1616,8 +1616,8 @@ app.use((error, req, res, next) => {
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Serve uploaded images
-app.use('/uploads', express.static(path.join(__dirname, '..', '..', 'uploads')));
+// Serve uploaded images from backend/uploads
+app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
 // Health check
 app.get('/health', (req, res) => {

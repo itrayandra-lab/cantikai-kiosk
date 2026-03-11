@@ -7,8 +7,10 @@ export default defineConfig({
     react()
   ],
   server: {
+    // Gunakan true (tanpa kutip) untuk mengizinkan semua host termasuk Ngrok
+    allowedHosts: true, 
+    // Tambahkan host: true agar server bisa diakses dari jaringan luar/tunnel
     host: true,
-    port: 5173,
-    strictPort: true, // Fail fast so env/origin tetap konsisten
+    cors: true,
   }
 })
