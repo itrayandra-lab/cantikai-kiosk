@@ -1,16 +1,21 @@
 FROM node:20-slim
+
 WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm install
+# Install dependencies (hanya yang diperlukan)
+RUN npm install --production
 
-# Copy source code
+# Copy seluruh source code backend
 COPY . .
 
-# Expose port
+# Memberikan izin akses (permission) tulis/baca secara rekursif
+# agar Node.js bisa menulis file ke folder uploads nantinya
+RUN chmod -R 777 /app
+
+# Expose port sesuai aplikasi Anda
 EXPOSE 8000
 
 # Start command

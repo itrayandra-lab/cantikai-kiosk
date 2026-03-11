@@ -1,6 +1,22 @@
+version: '3.8'
+
 services:
+  # --- BACKEND API ---
+  backend:
+    build: ./backend
+    container_name: cantik-backend
+    restart: unless-stopped
+    network_mode: "host" 
+    volumes:
+      - ./uploads:/app/uploads
+    env_file:
+      - ./backend/.env
+
+  # --- FRONTEND PWA ---
   frontend-pwa:
-    build: .
+    build: 
+      context: ./platforms/pwa
+      dockerfile: Dockerfile
     container_name: cantik-fe-pwa
     ports:
       - "3001:80"
