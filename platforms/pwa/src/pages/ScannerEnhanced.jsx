@@ -48,6 +48,7 @@ const ScannerEnhanced = () => {
         let cameraInstance = null;
         let faceMesh = null;
         let isComponentMounted = true;
+        let orientationChangeTimeout = null;
         let qualityCheckInterval = null;
 
         const loadScript = (src) => {
@@ -126,8 +127,19 @@ const ScannerEnhanced = () => {
                     if (videoRef.current.videoWidth === 0 || videoRef.current.videoHeight === 0) return;
                     
                     const canvasCtx = canvasRef.current.getContext('2d');
-                    const width = canvasRef.current.width;
-                    const height = canvasRef.current.height;
+                    
+                    // Use actual video dimensions for accurate coordinate mapping
+                    const actualVideoWidth = videoRef.current.videoWidth;
+                    const actualVideoHeight = videoRef.current.videoHeight;
+                    
+                    console.log(`📹 Actual Video Dimensions: ${actualVideoWidth}x${actualVideoHeight}`);
+                    
+                    // Set canvas size to match video dimensions
+                    canvasRef.current.width = actualVideoWidth;
+                    canvasRef.current.height = actualVideoHeight;
+                    
+                    const width = actualVideoWidth;
+                    const height = actualVideoHeight;
 
                     canvasCtx.save();
                     canvasCtx.clearRect(0, 0, width, height);
@@ -184,6 +196,15 @@ const ScannerEnhanced = () => {
                 });
 
                 if (videoRef.current) {
+                    // Detect orientation and set appropriate resolution
+                    const isPortrait = window.innerHeight > window.innerWidth;
+                    const cameraWidth = isPortrait ? 720 : 1280;
+                    const cameraHeight = isPortrait ? 1280 : 720;
+                    
+                    console.log(`📱 Orientation: ${isPortrait ? 'Portrait' : 'Landscape'}`);
+                    console.log(`📹 Camera Resolution: ${cameraWidth}x${cameraHeight}`);
+                    console.log(`🖥️ Window Size: ${window.innerWidth}x${window.innerHeight}`);
+                    
                     cameraInstance = new window.Camera(videoRef.current, {
                         onFrame: async () => {
                             // STOP processing if preview is shown
@@ -200,8 +221,8 @@ const ScannerEnhanced = () => {
                                 }
                             }
                         },
-                        width: 1280,  // Higher resolution
-                        height: 720
+                        width: cameraWidth,
+                        height: cameraHeight
                     });
                     cameraInstance.start().catch((err) => {
                         console.error("Camera start failed:", err);
@@ -219,8 +240,36 @@ const ScannerEnhanced = () => {
 
         startMediaPipe();
 
+        // Handle orientation changes
+        const handleOrientationChange = () => {
+            if (orientationChangeTimeout) clearTimeout(orientationChangeTimeout);
+            
+            orientationChangeTimeout = setTimeout(() => {
+                console.log('📱 Orientation changed, restarting camera...');
+                
+                // Restart MediaPipe with new orientation
+                if (isComponentMounted) {
+                    startMediaPipe();
+                }
+            }, 300); // Debounce orientation changes
+        };
+
+        // Listen for orientation changes
+        window.addEventListener('orientationchange', handleOrientationChange);
+        window.addEventListener('resize', handleOrientationChange);
+
         return () => {
             isComponentMounted = false;
+            
+            // Clear orientation change timeout
+            if (orientationChangeTimeout) {
+                clearTimeout(orientationChangeTimeout);
+                orientationChangeTimeout = null;
+            }
+            
+            // Remove orientation listeners
+            window.removeEventListener('orientationchange', handleOrientationChange);
+            window.removeEventListener('resize', handleOrientationChange);
             
             // Stop camera with better cleanup
             if (cameraInstance) {
@@ -419,8 +468,6 @@ const ScannerEnhanced = () => {
                 />
                 <canvas 
                     ref={canvasRef} 
-                    width={1280}  // Swapped to match video aspect ratio
-                    height={720}  // Swapped to match video aspect ratio 
                     style={{ 
                         position: 'absolute', 
                         top: 0, 
