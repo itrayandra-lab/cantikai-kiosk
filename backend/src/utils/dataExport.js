@@ -3,7 +3,7 @@
  * Export analyses to JSON/CSV for backup and analysis
  */
 
-import Database from 'better-sqlite3';
+import sqlite3 from 'sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
@@ -14,19 +14,24 @@ const __dirname = path.dirname(__filename);
 /**
  * Export analyses to JSON
  * @param {number} userId - User ID (optional, exports all if not provided)
- * @returns {object} - Export result
+ * @returns {Promise<object>} - Export result
  */
-export function exportToJSON(userId = null) {
+export async function exportToJSON(userId = null) {
     const dbPath = path.join(__dirname, '..', '..', 'database', 'cantik_ai.db');
-    const db = new Database(dbPath);
     
-    try {
-        console.log('📤 Exporting analyses to JSON...');
-        
-        // Get analyses
-        const query = userId 
-            ? 'SELECT * FROM analyses WHERE user_id = ? ORDER BY created_at DESC'
-            : 'SELECT * FROM analyses ORDER BY created_at DESC';
+    return new Promise((resolve, reject) => {
+        const db = new sqlite3.Database(dbPath, (err) => {
+            if (err) {
+                reject(err);
+                return;
+            }
+            
+            console.log('📤 Exporting analyses to JSON...');
+            
+            // Get analyses
+            const query = userId 
+                ? 'SELECT * FROM analyses WHERE user_id = ? ORDER BY created_at DESC'
+                : 'SELECT * FROM analyses ORDER BY created_at DESC';
         
         const analyses = userId 
             ? db.prepare(query).all(userId)

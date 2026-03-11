@@ -1,4 +1,4 @@
-import Database from 'better-sqlite3';
+import sqlite3 from 'sqlite3';
 
 const db = new Database('./database/scripts/cantik_ai.db');
 

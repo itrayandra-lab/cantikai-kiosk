@@ -5,7 +5,7 @@
  * - Backfills password hashes from legacy plaintext values
  */
 
-import Database from 'better-sqlite3';
+import sqlite3 from 'sqlite3';
 import bcrypt from 'bcryptjs';
 import path from 'path';
 import { fileURLToPath } from 'url';

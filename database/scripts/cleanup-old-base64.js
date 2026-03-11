@@ -3,7 +3,7 @@
  * Delete analyses with base64 images (old data) to reduce database size
  */
 
-import Database from 'better-sqlite3';
+import sqlite3 from 'sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
 

@@ -16,8 +16,8 @@ import { fileURLToPath } from 'url';
 import { promises as fsPromises, constants as fsConstants } from 'fs';
 import dotenv from 'dotenv';
 import { saveImageToFile, readImageAsBase64, deleteImageFile } from './utils/imageStorage.js';
-import { scheduleAutoCleanup } from './utils/autoCleanup.js';
-import { exportToJSON, exportToCSV } from './utils/dataExport.js';
+// import { scheduleAutoCleanup } from './utils/autoCleanup.js';
+// import { exportToJSON, exportToCSV } from './utils/dataExport.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -4536,7 +4536,7 @@ const startServer = async () => {
             console.log('✅ Ready to accept requests');
 
             // Schedule auto-cleanup (delete analyses older than 30 days, run every 24 hours)
-            scheduleAutoCleanup(30, 24);
+            // scheduleAutoCleanup(30, 24);
         });
 
         server.on('error', (error) => {

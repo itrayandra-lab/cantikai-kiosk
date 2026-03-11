@@ -3,7 +3,7 @@
  * Creates all required tables if they don't exist
  */
 
-import Database from 'better-sqlite3';
+import sqlite3 from 'sqlite3';
 import bcrypt from 'bcryptjs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -18,13 +18,48 @@ const configuredDbPath = process.env.DATABASE_PATH || '../database/scripts/canti
 const dbPath = path.isAbsolute(configuredDbPath)
     ? configuredDbPath
     : path.resolve(backendRoot, configuredDbPath);
-const db = new Database(dbPath);
+const db = new sqlite3.Database(dbPath, (err) => {
+    if (err) {
+        console.error('❌ Database connection error:', err);
+        process.exit(1);
+    } else {
+        console.log('✅ Database connected:', dbPath);
+    }
+});
 
 console.log('🔧 Initializing database...');
 console.log(`📍 Database path: ${dbPath}`);
 
+// Helper functions to promisify sqlite3 operations
+const dbRun = (sql, params = []) => {
+    return new Promise((resolve, reject) => {
+        db.run(sql, params, function(err) {
+            if (err) reject(err);
+            else resolve({ lastID: this.lastID, changes: this.changes });
+        });
+    });
+};
+
+const dbGet = (sql, params = []) => {
+    return new Promise((resolve, reject) => {
+        db.get(sql, params, (err, row) => {
+            if (err) reject(err);
+            else resolve(row);
+        });
+    });
+};
+
+const dbAll = (sql, params = []) => {
+    return new Promise((resolve, reject) => {
+        db.all(sql, params, (err, rows) => {
+            if (err) reject(err);
+            else resolve(rows);
+        });
+    });
+};
+
 // Enable WAL mode
-db.pragma('journal_mode = WAL');
+await dbRun('PRAGMA journal_mode = WAL');
 
 // Create tables
 const tables = [
@@ -213,56 +248,58 @@ const tables = [
     )`
 ];
 
-try {
-    tables.forEach((sql, index) => {
-        db.exec(sql);
-        console.log(`✅ Table ${index + 1}/${tables.length} created/verified`);
-    });
-    
-    // Create indexes for better performance
-    const indexes = [
-        'CREATE INDEX IF NOT EXISTS idx_analyses_user_id ON analyses(user_id)',
-        'CREATE INDEX IF NOT EXISTS idx_analyses_created_at ON analyses(created_at)',
-        'CREATE UNIQUE INDEX IF NOT EXISTS idx_analyses_user_session_unique ON analyses(user_id, client_session_id) WHERE client_session_id IS NOT NULL',
-        'CREATE INDEX IF NOT EXISTS idx_chat_sessions_user_id ON chat_sessions(user_id)',
-        'CREATE INDEX IF NOT EXISTS idx_chat_messages_session_id ON chat_messages(session_id)',
-        'CREATE UNIQUE INDEX IF NOT EXISTS idx_kiosk_sessions_uuid ON kiosk_sessions(session_uuid)',
-        'CREATE UNIQUE INDEX IF NOT EXISTS idx_kiosk_analyses_token ON kiosk_analyses(result_token)',
-        'CREATE UNIQUE INDEX IF NOT EXISTS idx_kiosk_analyses_session_unique ON kiosk_analyses(session_id)',
-        'CREATE INDEX IF NOT EXISTS idx_kiosk_analyses_created_at ON kiosk_analyses(created_at)',
-        'CREATE INDEX IF NOT EXISTS idx_products_category ON products(category)',
-        'CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id)',
-        'CREATE INDEX IF NOT EXISTS idx_articles_slug ON articles(slug)'
-    ];
-    
-    indexes.forEach((sql, index) => {
-        db.exec(sql);
-        console.log(`✅ Index ${index + 1}/${indexes.length} created/verified`);
-    });
-    
-    // Insert default admin if not exists
-    const adminExists = db.prepare('SELECT COUNT(*) as count FROM admins').get();
-    if (adminExists.count === 0) {
-        db.prepare('INSERT INTO admins (username, password, email) VALUES (?, ?, ?)').run(
-            'admin',
-            'admin123',
-            'admin@cantikai.com'
-        );
-        const hash = bcrypt.hashSync('admin123', 10);
-        db.prepare('UPDATE admins SET hashed_password = ? WHERE username = ?').run(hash, 'admin');
-        console.log('✅ Default admin created (username: admin, password: admin123)');
-    } else {
-        const adminsToHash = db.prepare(`
-            SELECT id, password FROM admins
-            WHERE (hashed_password IS NULL OR hashed_password = '')
-              AND password IS NOT NULL
-              AND password != ''
-        `).all();
-
-        for (const admin of adminsToHash) {
-            const hash = bcrypt.hashSync(admin.password, 10);
-            db.prepare('UPDATE admins SET hashed_password = ? WHERE id = ?').run(hash, admin.id);
+async function initializeDatabase() {
+    try {
+        // Create tables
+        for (let i = 0; i < tables.length; i++) {
+            await dbRun(tables[i]);
+            console.log(`✅ Table ${i + 1}/${tables.length} created/verified`);
         }
+        
+        // Create indexes for better performance
+        const indexes = [
+            'CREATE INDEX IF NOT EXISTS idx_analyses_user_id ON analyses(user_id)',
+            'CREATE INDEX IF NOT EXISTS idx_analyses_created_at ON analyses(created_at)',
+            'CREATE UNIQUE INDEX IF NOT EXISTS idx_analyses_user_session_unique ON analyses(user_id, client_session_id) WHERE client_session_id IS NOT NULL',
+            'CREATE INDEX IF NOT EXISTS idx_chat_sessions_user_id ON chat_sessions(user_id)',
+            'CREATE INDEX IF NOT EXISTS idx_chat_messages_session_id ON chat_messages(session_id)',
+            'CREATE UNIQUE INDEX IF NOT EXISTS idx_kiosk_sessions_uuid ON kiosk_sessions(session_uuid)',
+            'CREATE UNIQUE INDEX IF NOT EXISTS idx_kiosk_analyses_token ON kiosk_analyses(result_token)',
+            'CREATE UNIQUE INDEX IF NOT EXISTS idx_kiosk_analyses_session_unique ON kiosk_analyses(session_id)',
+            'CREATE INDEX IF NOT EXISTS idx_kiosk_analyses_created_at ON kiosk_analyses(created_at)',
+            'CREATE INDEX IF NOT EXISTS idx_products_category ON products(category)',
+            'CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id)',
+            'CREATE INDEX IF NOT EXISTS idx_articles_slug ON articles(slug)'
+        ];
+        
+        for (let i = 0; i < indexes.length; i++) {
+            await dbRun(indexes[i]);
+            console.log(`✅ Index ${i + 1}/${indexes.length} created/verified`);
+        }
+        
+        // Insert default admin if not exists
+        const adminExists = await dbGet('SELECT COUNT(*) as count FROM admins');
+        if (adminExists.count === 0) {
+            await dbRun('INSERT INTO admins (username, password, email) VALUES (?, ?, ?)', [
+                'admin',
+                'admin123',
+                'admin@cantikai.com'
+            ]);
+            const hash = bcrypt.hashSync('admin123', 10);
+            await dbRun('UPDATE admins SET hashed_password = ? WHERE username = ?', [hash, 'admin']);
+            console.log('✅ Default admin created (username: admin, password: admin123)');
+        } else {
+            const adminsToHash = await dbAll(`
+                SELECT id, password FROM admins
+                WHERE (hashed_password IS NULL OR hashed_password = '')
+                  AND password IS NOT NULL
+                  AND password != ''
+            `);
+
+            for (const admin of adminsToHash) {
+                const hash = bcrypt.hashSync(admin.password, 10);
+                await dbRun('UPDATE admins SET hashed_password = ? WHERE id = ?', [hash, admin.id]);
+            }
 
         if (adminsToHash.length > 0) {
             console.log(`✅ Backfilled hashed_password for ${adminsToHash.length} admin(s)`);
@@ -282,12 +319,13 @@ try {
         ['kiosk.idle_timeout_seconds', '180', 'number', 'kiosk', 'Timeout idle kiosk untuk reset sesi (detik)', 0]
     ];
 
-    const upsertSettingStmt = db.prepare(`
-        INSERT INTO app_settings (key, value, value_type, category, description, is_public)
-        VALUES (?, ?, ?, ?, ?, ?)
-        ON CONFLICT(key) DO NOTHING
-    `);
-    defaultSettings.forEach((setting) => upsertSettingStmt.run(...setting));
+    for (const setting of defaultSettings) {
+        await dbRun(`
+            INSERT INTO app_settings (key, value, value_type, category, description, is_public)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(key) DO NOTHING
+        `, setting);
+    }
     
     console.log('✅ Database initialization complete!');
     console.log('📊 Database ready for use');
@@ -298,3 +336,7 @@ try {
 } finally {
     db.close();
 }
+}
+
+// Run the initialization
+initializeDatabase();

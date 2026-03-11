@@ -3,7 +3,7 @@
  * Adds only missing sample banners, products, and articles.
  */
 
-import Database from 'better-sqlite3';
+import sqlite3 from 'sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
