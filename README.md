@@ -1,110 +1,265 @@
 # Cantik AI - Skin Analysis System
 
-AI-powered skin analysis monorepo with 4 runtime surfaces:
-- `backend` API + database access
-- `platforms/pwa` (mobile/PWA + embedded admin)
-- `platforms/kiosk` (public vertical touchscreen flow)
-- `platforms/desktop` (desktop web experience)
+Sistem analisis kulit berbasis AI dengan teknologi computer vision dan machine learning untuk memberikan analisis kulit yang akurat dan rekomendasi perawatan yang personal.
 
-## Quick Start
+## 🚀 Fitur Utama
 
+- **Analisis Kulit Real-time** - Deteksi wajah dengan MediaPipe dan analisis AI
+- **Multi-Platform** - PWA, Kiosk, Desktop, dan Admin Dashboard
+- **AI Analysis** - Gemini Vision + Groq untuk analisis komprehensif
+- **15 Mode Analisis** - Pori, pigmentasi, kerutan, jerawat, dan lainnya
+- **Database MySQL** - Penyimpanan data yang robust dan scalable
+- **Token System** - Sistem kredit untuk kontrol penggunaan
+
+## 🏗️ Arsitektur Sistem
+
+```
+cantik-ai/
+├── backend/                 # API Server (Node.js + Express + MySQL)
+├── platforms/
+│   ├── pwa/                # Progressive Web App (React + Vite)
+│   ├── kiosk/              # Kiosk Interface (Touchscreen)
+│   ├── desktop/            # Desktop Web Experience
+│   └── admin/              # Admin Dashboard
+└── docs/                   # Dokumentasi lengkap
+```
+
+## 🛠️ Tech Stack
+
+**Backend:**
+- Node.js + Express.js
+- MySQL Database
+- Gemini AI Vision API
+- Groq AI Text API
+- JWT Authentication
+
+**Frontend:**
+- React 18 + Vite
+- MediaPipe Face Detection
+- Progressive Web App (PWA)
+- Responsive Design
+
+## ⚡ Quick Start
+
+### 1. Clone Repository
 ```bash
+git clone <repository-url>
+cd cantik-ai
+```
+
+### 2. Setup Backend
+```bash
+cd backend
 npm install
-npm start
+cp .env.example .env
+# Edit .env dengan konfigurasi database dan API keys
+npm run init-db
+npm run dev
 ```
 
-Default `npm start` keeps existing stable flow:
-- Backend API: `http://localhost:8000`
-- PWA + embedded admin: `http://localhost:5173`
-
-## Platform URLs
-
-| Surface | URL | Notes |
-|---|---|---|
-| PWA | http://localhost:5173 | User app (mobile/PWA) |
-| Admin (embedded) | http://localhost:5173/admin | admin/admin123 |
-| Admin (standalone) | http://localhost:5174/admin | admin/admin123 |
-| Kiosk | http://localhost:5175 | Public kiosk flow |
-| Desktop Web | http://localhost:5176 | Desktop website |
-| Backend API | http://localhost:8000 | Core API |
-
-## NPM Scripts
-
+### 3. Setup PWA
 ```bash
-npm run dev:backend
-npm run dev:pwa
-npm run dev:admin
-npm run dev:kiosk
-npm run dev:desktop
-npm run dev:all
+cd platforms/pwa
+npm install
+cp .env.example .env
+# Edit .env dengan API endpoints
+npm run dev
+```
 
-npm run build:pwa
-npm run build:admin
-npm run build:kiosk
-npm run build:desktop
+### 4. Akses Aplikasi
+- **PWA**: http://localhost:5173
+- **Backend API**: http://localhost:8000
+- **Admin**: http://localhost:5173/admin (admin/admin123)
+
+## 🔧 Konfigurasi Environment
+
+### Backend (.env)
+```bash
+# Database
+DB_HOST=localhost
+DB_USER=root
+DB_PASSWORD=your_password
+DB_NAME=cantik_ai
+
+# AI APIs
+GEMINI_API_KEY=your_gemini_key
+GROQ_API_KEY=your_groq_key
+
+# JWT
+JWT_SECRET=your_jwt_secret
+
+# Server
+PORT=8000
+NODE_ENV=development
+```
+
+### PWA (.env)
+```bash
+VITE_API_BASE_URL=http://localhost:8000
+VITE_GEMINI_API_KEY=your_gemini_key
+VITE_GROQ_API_KEY=your_groq_key
+```
+
+## 📱 Platform URLs
+
+| Platform | URL | Deskripsi |
+|----------|-----|-----------|
+| PWA | http://localhost:5173 | Aplikasi mobile/web utama |
+| Admin | http://localhost:5173/admin | Dashboard admin (embedded) |
+| Kiosk | http://localhost:5175 | Interface kiosk touchscreen |
+| Desktop | http://localhost:5176 | Website desktop |
+| Backend API | http://localhost:8000 | REST API server |
+
+## 🎯 Cara Penggunaan
+
+### Untuk User (PWA)
+1. Buka http://localhost:5173
+2. Register/Login atau gunakan mode Guest
+3. Pilih "Mulai Analisis"
+4. Ikuti panduan positioning wajah
+5. Ambil foto atau upload gambar
+6. Tunggu hasil analisis AI
+7. Lihat rekomendasi perawatan
+
+### Untuk Admin
+1. Buka http://localhost:5173/admin
+2. Login: admin/admin123
+3. Kelola users, analisis, produk, artikel
+4. Monitor sistem dan database
+
+### Untuk Kiosk
+1. Buka http://localhost:5175
+2. Interface touchscreen untuk public use
+3. Alur mandiri tanpa login
+4. Generate QR code untuk hasil
+
+## 🔍 API Endpoints
+
+### Authentication
+- `POST /api/v2/auth/register` - Registrasi user
+- `POST /api/v2/auth/login` - Login user
+- `POST /api/v2/auth/guest` - Guest session
+
+### Analysis
+- `POST /api/v2/analysis/analyze` - Analisis kulit
+- `GET /api/v2/analysis/history` - Riwayat analisis
+- `GET /api/v2/analysis/:id` - Detail analisis
+
+### Users
+- `GET /api/v2/users/profile` - Profile user
+- `PUT /api/v2/users/profile` - Update profile
+
+## 🧪 Testing
+
+### Test Backend
+```bash
+cd backend
+npm test
+```
+
+### Test PWA
+```bash
+cd platforms/pwa
+npm run test
+```
+
+### Test All Platforms
+```bash
+npm run test:all
+```
+
+## 📦 Build & Deploy
+
+### Build PWA
+```bash
+cd platforms/pwa
+npm run build
+```
+
+### Build All Platforms
+```bash
 npm run build:all
-npm run verify:all
 ```
 
-## Database
+### Deploy ke Production
+```bash
+# Build semua platform
+npm run build:all
 
-- Active DB path: `database/scripts/cantik_ai.db`
-- Init schema: `npm run db:init`
-- Seed sample data (non-destructive): `npm run db:seed`
-- Seed inserts missing records only (no overwrite for existing banners/products/articles).
+# Verify sebelum deploy
+npm run verify:all
 
-### Kiosk Tables (separate logic, same database)
+# Deploy backend
+cd backend
+npm start
 
-- `kiosk_sessions`
-- `kiosk_analyses`
+# Serve PWA (contoh dengan nginx/apache)
+# Copy dist/ ke web server
+```
 
-Kiosk data is isolated from PWA user/account flow. No route mixing.
-
-## Backend Env
-
-See `backend/.env.example`. Key additions for kiosk/production:
+## 🔧 Development Scripts
 
 ```bash
-KIOSK_PUBLIC_BASE_URL=http://localhost:8000
-KIOSK_RESULT_TOKEN_EXPIRES_DAYS=30
-WHATSAPP_WEBHOOK_URL=
-WHATSAPP_WEBHOOK_SECRET=
+# Backend
+npm run dev:backend          # Jalankan backend dev server
+npm run init-db             # Initialize database
+npm run seed-db             # Seed sample data
+
+# PWA
+npm run dev:pwa             # Jalankan PWA dev server
+npm run build:pwa           # Build PWA untuk production
+
+# All Platforms
+npm run dev:all             # Jalankan semua platform
+npm run build:all           # Build semua platform
+npm run verify:all          # Verify semua sistem
 ```
 
-## Kiosk Flow (implemented)
+## 🐛 Troubleshooting
 
-1. Onboarding (`Mulai Analisa`)
-2. Panduan scan (`/guide`) untuk kualitas capture yang benar
-3. System check (`/system`) untuk operator cek backend/db/AI/storage
-4. Input data diri sederhana (nama, gender, whatsapp opsional)
-5. Scan wajah realtime (FaceMesh + auto capture + quality gate)
-6. Backend analyze + store + generate unique result token/QR + PDF link
-7. Result page with QR + auto reset to onboarding
+### Camera Issues
+- Pastikan HTTPS atau localhost untuk camera access
+- Check browser permissions untuk camera
+- Gunakan Chrome/Safari untuk compatibility terbaik
 
-Endpoints:
-- `GET /api/v2/kiosk/system/health`
-- `POST /api/v2/kiosk/sessions/start`
-- `POST /api/v2/kiosk/sessions/:sessionUuid/analyze`
-- `GET /api/v2/kiosk/sessions/:sessionUuid/result`
-- `POST /api/v2/kiosk/sessions/:sessionUuid/close`
-- `GET /api/v2/kiosk/result/:token`
-- `GET /kiosk/result/:token`
-- `GET /api/v2/kiosk/result/:token/pdf`
+### MediaPipe Loading
+- Check internet connection untuk CDN
+- Fallback ke basic camera jika MediaPipe gagal
+- Clear browser cache jika ada masalah loading
 
-## Admin Coverage
+### Database Connection
+- Pastikan MySQL service running
+- Check credentials di .env
+- Jalankan `npm run init-db` untuk setup awal
 
-Admin dashboard now covers:
-- Users / Products / Articles / Banners CRUD
-- Analyses management
-- Chat Sessions management
-- Kiosk Sessions management
-- Design System / Settings
-- Database summary & table viewer
+### API Keys
+- Dapatkan Gemini API key dari Google AI Studio
+- Dapatkan Groq API key dari Groq Console
+- Pastikan keys valid dan tidak expired
 
-## Notes
+## 📚 Dokumentasi Lengkap
 
-- `uploads/` is shared storage for media across all platforms.
-- For production deployment, `uploads/` must be on persistent storage/volume.
-- `.db-wal` and `.db-shm` are normal SQLite WAL files.
-- Jalankan `npm run verify:all` sebelum deploy production untuk gate verifikasi backend + auth + kiosk flow + build semua platform.
-- Jangan jalankan `npm run db:init` / `npm run db:reset` pada database production yang sudah berisi data user.
+Lihat folder `docs/` untuk dokumentasi detail:
+- `docs/01-project-overview/` - Overview proyek
+- `docs/02-documentation/` - Dokumentasi teknis
+- `docs/03-deployment/` - Panduan deployment
+- `docs/04-guides/` - Panduan penggunaan
+
+## 🤝 Contributing
+
+1. Fork repository
+2. Create feature branch
+3. Commit changes
+4. Push to branch
+5. Create Pull Request
+
+## 📄 License
+
+MIT License - lihat file LICENSE untuk detail.
+
+## 🆘 Support
+
+Untuk bantuan dan support:
+- Buka issue di GitHub
+- Check dokumentasi di folder `docs/`
+- Review troubleshooting guide di atas
