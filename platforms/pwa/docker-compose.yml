@@ -8,7 +8,8 @@ services:
     restart: unless-stopped
     network_mode: "host" 
     volumes:
-      - ./uploads:/app/uploads
+      # Jalur VPS diarahkan ke folder backend/uploads agar sesuai struktur baru Anda
+      - /www/wwwroot/skin-analyzer.cantik.ai/backend/uploads:/app/uploads
     env_file:
       - ./backend/.env
 
@@ -18,6 +19,7 @@ services:
       context: ./platforms/pwa
       dockerfile: Dockerfile
     container_name: cantik-fe-pwa
+    # Tetap menggunakan port 3001 agar bisa di-proxy oleh aaPanel
     ports:
       - "3001:80"
     restart: always

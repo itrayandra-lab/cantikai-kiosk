@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  backend:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: cantik-backend
+    restart: unless-stopped
+    # Menggunakan network host agar mudah konek ke MySQL aaPanel (127.0.0.1)
+    network_mode: "host"
+    volumes:
+      # Gunakan jalur absolut untuk memastikan mapping ke VPS benar
+      - /www/wwwroot/skin-analyzer.cantik.ai/backend/uploads:/app/uploads
+    env_file:
+      - ./backend/.env
+    # Memastikan container menunggu network siap
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  frontend-pwa:
+    build: 
+      context: ./platforms/pwa
+      dockerfile: Dockerfile
+    container_name: cantik-fe-pwa
+    ports:
+      - "3001:80"
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

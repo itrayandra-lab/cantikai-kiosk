@@ -5,8 +5,8 @@ services:
     build: ./backend
     container_name: cantik-backend
     restart: unless-stopped
-    network_mode: "host" 
+    network_mode: "host"
     volumes:
-      - ./uploads:/app/uploads
+      - /www/wwwroot/skin-analyzer.cantik.ai/backend/uploads:/app/uploads
     env_file:
       - ./backend/.env
