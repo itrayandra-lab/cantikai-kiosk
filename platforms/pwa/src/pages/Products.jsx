@@ -116,7 +116,7 @@ const Products = () => {
                     >
                         <ArrowLeft size={24} color="var(--text-headline)" />
                     </button>
-                    <h1 className="headline" style={{ fontSize: '2.5rem', margin: 0 }}>Produk</h1>
+                    <h1 className="headline" style={{ fontSize: 'clamp(1.8rem, 6vw, 2.2rem)', margin: 0 }}>Produk</h1>
                 </div>
 
                 {/* Banner Slider */}

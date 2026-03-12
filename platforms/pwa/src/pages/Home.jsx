@@ -285,7 +285,9 @@ const Home = () => {
                 <div style={{ marginBottom: '24px', padding: '0 17px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                         <div style={{ flex: 1 }}>
-                            <h1 className="headline" style={{ fontSize: '1.8rem', marginBottom: '0', fontFamily: 'var(--font-serif)', textAlign: 'left' }}>Halo, {userName}!</h1>
+                            <h1 className="headline" style={{ fontSize: '1.8rem', marginBottom: '0', fontFamily: 'var(--font-serif)', textAlign: 'left' }}>
+                                {isGuestMode ? 'Halo!' : `Halo, ${userName}!`}
+                            </h1>
                         </div>
                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                             {/* Profile Icon */}

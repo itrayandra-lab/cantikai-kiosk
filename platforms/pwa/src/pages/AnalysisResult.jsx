@@ -739,7 +739,7 @@ const AnalysisResult = () => {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '36px' }}>
                     <div>
                         <p style={{ color: 'var(--text-headline)', marginBottom: '0px', fontWeight: 500, fontSize: '1.2rem', opacity: 0.9 }}>Laporan</p>
-                        <h1 className="headline" style={{ fontSize: '3.4rem', lineHeight: 1.05 }}>Kulit Anda</h1>
+                        <h1 className="headline" style={{ fontSize: 'clamp(1.8rem, 8vw, 2.4rem)', lineHeight: 1.05 }}>Kulit Anda</h1>
                     </div>
                     <button
                         onClick={() => navigate('/')}
@@ -749,28 +749,7 @@ const AnalysisResult = () => {
                     </button>
                 </div>
 
-                {/* Info Badge */}
-                {!loading && (
-                    <>
-                        {aiInsights && (
-                            <div style={{ margin: '0 0 20px', background: 'rgba(157, 90, 118, 0.1)', backdropFilter: 'blur(8px)', borderRadius: '20px', padding: '14px 20px', display: 'flex', alignItems: 'center', gap: '10px', border: '1px solid var(--primary-light)' }}>
-                                <Info size={18} color="var(--primary-color)" />
-                                <p style={{ fontSize: '0.85rem', color: 'var(--primary-color)', fontWeight: 500, margin: 0, fontFamily: 'var(--font-sans)' }}>
-                                    Analisis: {analysisEngine}
-                                </p>
-                            </div>
-                        )}
-                        
-                        {!aiInsights && (
-                            <div style={{ margin: '0 0 20px', background: 'rgba(157, 90, 118, 0.08)', backdropFilter: 'blur(8px)', borderRadius: '20px', padding: '14px 20px', display: 'flex', alignItems: 'center', gap: '10px', border: '1px solid rgba(157, 90, 118, 0.3)' }}>
-                                <Info size={18} color="var(--text-body)" />
-                                <p style={{ fontSize: '0.85rem', color: 'var(--text-body)', fontWeight: 500, margin: 0, fontFamily: 'var(--font-sans)' }}>
-                                    Mode CV: {analysisEngine} (AI tidak tersedia)
-                                </p>
-                            </div>
-                        )}
-                    </>
-                )}
+                {/* Info Badge - Hidden (Backend Implementation Detail) */}
 
                 {/* Guest Token Banner */}
                 {isGuest && tokenInfo && !loading && (
@@ -835,7 +814,7 @@ const AnalysisResult = () => {
                                 />
                             </svg>
                             <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center' }}>
-                                <h2 className="headline" style={{ fontSize: '2.5rem', margin: 0, color: 'var(--primary-color)' }}>{progress}%</h2>
+                                <h2 className="headline" style={{ fontSize: 'clamp(1.5rem, 6vw, 2rem)', margin: 0, color: 'var(--primary-color)' }}>{progress}%</h2>
                             </div>
                         </div>
                         
@@ -895,7 +874,7 @@ const AnalysisResult = () => {
                             <div style={{ animation: 'etherealFade 0.6s ease' }}>
                                 <div className="card-glass" style={{ padding: `${SPACING.card}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: `${SPACING.section}px` }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                                        <span className="headline" style={{ fontSize: '2.4rem', color: 'var(--text-headline)', lineHeight: 1 }}>{resultData?.overall_score}<span style={{ fontSize: '1.2rem', fontFamily: 'var(--font-sans)', fontWeight: 300 }}>%</span></span>
+                                        <span className="headline" style={{ fontSize: 'clamp(1.8rem, 6vw, 2.2rem)', color: 'var(--text-headline)', lineHeight: 1 }}>{resultData?.overall_score}<span style={{ fontSize: '0.8rem', fontFamily: 'var(--font-sans)', fontWeight: 300 }}>%</span></span>
                                         <span style={{ fontSize: TYPOGRAPHY.body, color: 'var(--text-headline)', fontWeight: 600 }}>Kesehatan Kulit</span>
                                     </div>
                                 </div>
@@ -1227,7 +1206,7 @@ const AnalysisResult = () => {
                                     <div style={{ animation: 'etherealFade 0.6s ease', marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                         {/* Button 1: Lihat Semua Rekomendasi Produk */}
                                         <button
-                                            onClick={() => navigate('/recommendations', { state: { resultData, aiInsights } })}
+                                            onClick={() => navigate('/recommendations', { state: { resultData, aiInsights, backendRecommendations: resultData?.product_recommendations } })}
                                             style={{
                                                 background: 'transparent',
                                                 color: 'var(--primary-color)',

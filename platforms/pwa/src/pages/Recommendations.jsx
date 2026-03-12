@@ -189,6 +189,8 @@ const Recommendations = () => {
     const [loading, setLoading] = useState(true);
     const [products, setProducts] = useState([]);
     const [error, setError] = useState('');
+    const [backendRecommendations, setBackendRecommendations] = useState(null);
+    const [useBackendRecs, setUseBackendRecs] = useState(false);
 
     const persistedResult = useMemo(() => parseStoredJson('cantik_last_result_data'), []);
     const persistedInsights = useMemo(() => parseStoredJson('cantik_last_ai_insights'), []);
@@ -204,6 +206,13 @@ const Recommendations = () => {
             try {
                 const data = await apiService.getProducts();
                 setProducts(Array.isArray(data) ? data : []);
+                
+                // Try to get backend recommendations if available
+                if (state?.backendRecommendations && Array.isArray(state.backendRecommendations)) {
+                    setBackendRecommendations(state.backendRecommendations);
+                    setUseBackendRecs(true);
+                    console.log('✅ Using backend-generated recommendations:', state.backendRecommendations.length);
+                }
             } catch (err) {
                 console.error('Get recommendation products error:', err);
                 setError(err.message || 'Gagal memuat produk rekomendasi');
@@ -214,9 +223,15 @@ const Recommendations = () => {
         };
 
         fetchProducts();
-    }, []);
+    }, [state]);
 
     const recommendedProducts = useMemo(() => {
+        // If we have backend recommendations, use them
+        if (useBackendRecs && backendRecommendations && backendRecommendations.length > 0) {
+            return backendRecommendations.slice(0, 8);
+        }
+
+        // Fallback to local scoring
         const scored = products
             .map((product) => {
                 const scoreInfo = scoreProduct(product, targets, profile);
@@ -239,7 +254,7 @@ const Recommendations = () => {
         }
 
         return deduped;
-    }, [products, targets, profile]);
+    }, [products, targets, profile, backendRecommendations, useBackendRecs]);
 
     const insightSnippets = Array.isArray(aiInsights?.recommendations)
         ? aiInsights.recommendations.slice(0, 2)

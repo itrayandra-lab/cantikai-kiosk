@@ -15,6 +15,7 @@ import { fileURLToPath } from 'url';
 import { promises as fsPromises, constants as fsConstants } from 'fs';
 import dotenv from 'dotenv';
 import { saveImageToFile, readImageAsBase64, deleteImageFile } from './utils/imageStorage.js';
+import { getProductRecommendations, formatRecommendations } from './utils/productRecommendation.js';
 import { pool, dbGet, dbAll, dbRun, testConnection } from './config/database.js';
 // import { scheduleAutoCleanup } from './utils/autoCleanup.js';
 // import { exportToJSON, exportToCSV } from './utils/dataExport.js';
@@ -2203,9 +2204,9 @@ app.post('/api/v2/analysis/save', async (req, res) => {
             INSERT INTO analyses (
                 user_id, image_url, visualization_url, overall_score, skin_type,
                 fitzpatrick_type, predicted_age, analysis_version, engine, processing_time_ms,
-                cv_metrics, vision_analysis, ai_insights, client_session_id
+                cv_metrics, vision_analysis, ai_insights, client_session_id, product_recommendations
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `, [
             user_id,
             imagePath || '',
@@ -2220,7 +2221,8 @@ app.post('/api/v2/analysis/save', async (req, res) => {
             safeStringify(cvMetrics),
             safeStringify(visionAnalysis),
             processAnalysisField(ai_insights),
-            normalizedSessionId
+            normalizedSessionId,
+            '[]' // placeholder untuk product_recommendations
         ]);
         savedAnalysisId = result.lastID;
         
@@ -2237,6 +2239,27 @@ app.post('/api/v2/analysis/save', async (req, res) => {
         }
         if (analysis.ai_insights) {
             analysis.ai_insights = safeParseJSON(analysis.ai_insights, {});
+        }
+        
+        // Generate product recommendations based on analysis
+        try {
+            const analysisForRec = {
+                skin_type: analysis.skin_type,
+                scores: analysis.vision_analysis?.scores || {},
+                priority_concerns: analysis.vision_analysis?.priority_concerns || []
+            };
+            const recommendedProducts = await getProductRecommendations(dbAll, analysisForRec);
+            if (recommendedProducts.length > 0) {
+                analysis.product_recommendations = recommendedProducts;
+                // Update database with recommendations
+                await dbRun(
+                    'UPDATE analyses SET product_recommendations = ? WHERE id = ?',
+                    [JSON.stringify(recommendedProducts), result.lastID]
+                );
+                console.log('✅ Product recommendations generated:', recommendedProducts.length);
+            }
+        } catch (recError) {
+            console.warn('⚠️ Error generating recommendations:', recError.message);
         }
         
         res.json(analysis);
