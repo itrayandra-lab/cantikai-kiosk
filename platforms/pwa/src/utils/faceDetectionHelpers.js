@@ -205,7 +205,7 @@ export const drawKeyPoints = (canvasCtx, landmarks, width, height, isOptimal) =>
         // Draw small dot - different size for portrait vs landscape
         canvasCtx.beginPath();
         if (isPortrait) {
-            canvasCtx.arc(x, y, 0.4, 0, 1 * Math.PI);
+            canvasCtx.arc(x, y, 1.5, 0, 1 * Math.PI);
         } else {
             canvasCtx.arc(x, y, 1.5, 0, 2 * Math.PI);
         }

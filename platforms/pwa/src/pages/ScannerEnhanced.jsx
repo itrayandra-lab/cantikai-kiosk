@@ -215,8 +215,8 @@ const ScannerEnhanced = () => {
                     const isPortrait = window.innerHeight > window.innerWidth;
                     console.log(`📱 Is Portrait: ${isPortrait}`);
                     
-                    const cameraWidth = isPortrait ? Math.floor(480 * qualityLevel) : Math.floor(1280 * qualityLevel);
-                    const cameraHeight = isPortrait ? Math.floor(640 * qualityLevel) : Math.floor(720 * qualityLevel);
+                    const cameraWidth = isPortrait ? Math.floor(1280 * qualityLevel) : Math.floor(1280 * qualityLevel);
+                    const cameraHeight = isPortrait ? Math.floor(720 * qualityLevel) : Math.floor(720 * qualityLevel);
                     
                     console.log(`📱 Orientation: ${isPortrait ? 'Portrait' : 'Landscape'}`);
                     console.log(`📹 Camera Resolution: ${cameraWidth}x${cameraHeight}`);
