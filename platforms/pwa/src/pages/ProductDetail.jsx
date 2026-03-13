@@ -61,7 +61,7 @@ const ProductDetail = () => {
             
             return (
                 <p key={index} style={{ 
-                    color: 'rgba(255, 255, 255, 0.8)', 
+                    color: 'var(--text-body)', 
                     fontSize: '0.9rem', 
                     lineHeight: 1.6,
                     margin: '8px 0'
@@ -74,9 +74,9 @@ const ProductDetail = () => {
 
     if (loading) {
         return (
-            <div className="app-container" style={{ background: '#36212a', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <div style={{ textAlign: 'center', color: 'white' }}>
-                    <Loader2 size={40} className="animate-spin" style={{ marginBottom: '16px' }} />
+            <div className="app-container" style={{ background: 'white', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ textAlign: 'center', color: 'var(--text-headline)' }}>
+                    <Loader2 size={40} className="animate-spin" style={{ marginBottom: '16px', color: 'var(--primary-color)' }} />
                     <p>Memuat detail produk...</p>
                 </div>
             </div>
@@ -85,8 +85,8 @@ const ProductDetail = () => {
 
     if (error) {
         return (
-            <div className="app-container" style={{ background: '#36212a', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <div style={{ textAlign: 'center', color: 'white' }}>
+            <div className="app-container" style={{ background: 'white', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ textAlign: 'center', color: 'var(--text-headline)' }}>
                     <p style={{ marginBottom: '16px' }}>Error: {error}</p>
                     <button 
                         onClick={() => navigate('/products')}
@@ -111,22 +111,22 @@ const ProductDetail = () => {
     }
 
     return (
-        <div className="app-container" style={{ background: '#36212a', minHeight: '100vh' }}>
+        <div className="app-container" style={{ background: 'white', minHeight: '100vh' }}>
             {/* Header */}
             <div style={{ 
                 position: 'sticky', 
                 top: 0, 
-                background: 'rgba(54, 33, 42, 0.95)', 
+                background: 'rgba(255, 255, 255, 0.95)', 
                 backdropFilter: 'blur(10px)',
                 padding: '16px 20px',
-                borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+                borderBottom: '1px solid rgba(157, 90, 118, 0.1)',
                 zIndex: 10
             }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                     <button
                         onClick={() => navigate('/products')}
                         style={{
-                            background: 'rgba(255, 255, 255, 0.1)',
+                            background: 'rgba(157, 90, 118, 0.1)',
                             border: 'none',
                             borderRadius: '50%',
                             width: '40px',
@@ -135,13 +135,13 @@ const ProductDetail = () => {
                             alignItems: 'center',
                             justifyContent: 'center',
                             cursor: 'pointer',
-                            color: 'white'
+                            color: 'var(--primary-color)'
                         }}
                     >
                         <ArrowLeft size={20} />
                     </button>
                     <h1 style={{ 
-                        color: 'white', 
+                        color: 'var(--text-headline)', 
                         fontSize: '1.2rem', 
                         fontWeight: 700, 
                         margin: 0,
@@ -162,14 +162,15 @@ const ProductDetail = () => {
                 <div style={{ 
                     width: '100%', 
                     height: '300px', 
-                    background: 'rgba(255, 255, 255, 0.05)',
+                    background: 'rgba(157, 90, 118, 0.05)',
                     borderRadius: '16px',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     overflow: 'hidden',
                     marginBottom: '24px',
-                    border: '1px solid rgba(255, 255, 255, 0.1)'
+                    border: '1px solid rgba(157, 90, 118, 0.1)',
+                    boxShadow: '0 2px 8px rgba(157, 90, 118, 0.08)'
                 }}>
                     <img 
                         src={product.image_url} 
@@ -181,36 +182,36 @@ const ProductDetail = () => {
                         }}
                         onError={(e) => {
                             e.target.style.display = 'none';
-                            e.target.parentNode.innerHTML = '<div style="color: rgba(255,255,255,0.5); font-size: 1rem;">No Image Available</div>';
+                            e.target.parentNode.innerHTML = '<div style="color: rgba(157, 90, 118, 0.5); font-size: 1rem;">No Image Available</div>';
                         }}
                     />
                 </div>
 
                 {/* Product Info */}
                 <div style={{ 
-                    background: 'rgba(255, 255, 255, 0.05)',
+                    background: 'white',
                     borderRadius: '16px',
                     padding: '24px',
-                    border: '1px solid rgba(255, 255, 255, 0.1)',
-                    backdropFilter: 'blur(10px)'
+                    border: '1px solid rgba(157, 90, 118, 0.1)',
+                    boxShadow: '0 2px 8px rgba(157, 90, 118, 0.08)'
                 }}>
                     {/* Category */}
                     <div style={{ 
-                        background: 'rgba(255, 190, 215, 0.2)',
-                        color: 'rgba(255, 190, 215, 0.9)',
+                        background: 'rgba(157, 90, 118, 0.1)',
+                        color: 'var(--primary-color)',
                         fontSize: '0.8rem',
                         padding: '6px 12px',
                         borderRadius: '12px',
                         display: 'inline-block',
                         marginBottom: '16px',
-                        fontWeight: 500
+                        fontWeight: 600
                     }}>
                         {product.category.name}
                     </div>
                     
                     {/* Product Name */}
                     <h2 style={{ 
-                        color: 'white', 
+                        color: 'var(--text-headline)', 
                         fontSize: '1.5rem', 
                         fontWeight: 700, 
                         margin: '0 0 20px 0',
@@ -244,7 +245,7 @@ const ProductDetail = () => {
                             }}
                             onMouseEnter={(e) => {
                                 e.target.style.transform = 'translateY(-2px)';
-                                e.target.style.boxShadow = '0 6px 20px rgba(255, 107, 157, 0.4)';
+                                e.target.style.boxShadow = '0 6px 20px rgba(157, 90, 118, 0.4)';
                             }}
                             onMouseLeave={(e) => {
                                 e.target.style.transform = 'translateY(0)';
@@ -262,8 +263,8 @@ const ProductDetail = () => {
                         onClick={() => navigate('/products')}
                         style={{
                             background: 'transparent',
-                            color: 'rgba(255, 255, 255, 0.8)',
-                            border: '1px solid rgba(255, 255, 255, 0.3)',
+                            color: 'var(--text-body)',
+                            border: '1px solid rgba(157, 90, 118, 0.3)',
                             padding: '12px 28px',
                             borderRadius: '25px',
                             fontSize: '0.9rem',
@@ -273,12 +274,14 @@ const ProductDetail = () => {
                             transition: 'all 0.2s ease'
                         }}
                         onMouseEnter={(e) => {
-                            e.target.style.background = 'rgba(255, 255, 255, 0.1)';
-                            e.target.style.borderColor = 'rgba(255, 255, 255, 0.5)';
+                            e.target.style.background = 'rgba(157, 90, 118, 0.1)';
+                            e.target.style.borderColor = 'rgba(157, 90, 118, 0.5)';
+                            e.target.style.color = 'var(--primary-color)';
                         }}
                         onMouseLeave={(e) => {
                             e.target.style.background = 'transparent';
-                            e.target.style.borderColor = 'rgba(255, 255, 255, 0.3)';
+                            e.target.style.borderColor = 'rgba(157, 90, 118, 0.3)';
+                            e.target.style.color = 'var(--text-body)';
                         }}
                     >
                         Kembali ke Produk
