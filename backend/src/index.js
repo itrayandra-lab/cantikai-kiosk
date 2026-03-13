@@ -2241,25 +2241,43 @@ app.post('/api/v2/analysis/save', async (req, res) => {
             analysis.ai_insights = safeParseJSON(analysis.ai_insights, {});
         }
         
-        // Generate product recommendations based on analysis
+        // Handle product recommendations - preserve Beautylatory products if provided
         try {
-            const analysisForRec = {
-                skin_type: analysis.skin_type,
-                scores: analysis.vision_analysis?.scores || {},
-                priority_concerns: analysis.vision_analysis?.priority_concerns || []
-            };
-            const recommendedProducts = await getProductRecommendations(dbAll, analysisForRec);
-            if (recommendedProducts.length > 0) {
-                analysis.product_recommendations = recommendedProducts;
+            let finalProductRecommendations = [];
+            
+            // Check if frontend already provided Beautylatory product recommendations
+            const frontendRecommendations = analysisDataObj?.product_recommendations || 
+                                          visionAnalysis?.product_recommendations ||
+                                          analysisDataObj?.ai_report?.product_recommendations;
+            
+            if (frontendRecommendations && Array.isArray(frontendRecommendations) && frontendRecommendations.length > 0) {
+                // Use Beautylatory products from frontend
+                finalProductRecommendations = frontendRecommendations;
+                console.log('✅ Using Beautylatory product recommendations from frontend:', finalProductRecommendations.length);
+            } else {
+                // Fallback to local database products
+                const analysisForRec = {
+                    skin_type: analysis.skin_type,
+                    scores: analysis.vision_analysis?.scores || {},
+                    priority_concerns: analysis.vision_analysis?.priority_concerns || []
+                };
+                const localProducts = await getProductRecommendations(dbAll, analysisForRec);
+                if (localProducts.length > 0) {
+                    finalProductRecommendations = localProducts;
+                    console.log('✅ Using local database product recommendations:', finalProductRecommendations.length);
+                }
+            }
+            
+            if (finalProductRecommendations.length > 0) {
+                analysis.product_recommendations = finalProductRecommendations;
                 // Update database with recommendations
                 await dbRun(
                     'UPDATE analyses SET product_recommendations = ? WHERE id = ?',
-                    [JSON.stringify(recommendedProducts), result.lastID]
+                    [JSON.stringify(finalProductRecommendations), result.lastID]
                 );
-                console.log('✅ Product recommendations generated:', recommendedProducts.length);
             }
         } catch (recError) {
-            console.warn('⚠️ Error generating recommendations:', recError.message);
+            console.warn('⚠️ Error handling product recommendations:', recError.message);
         }
         
         res.json(analysis);
