@@ -44,6 +44,9 @@ const modalOverlayStyle = {
 };
 
 const MAX_IMAGE_UPLOAD_BYTES = 5 * 1024 * 1024;
+const MIN_PORTRAIT_RATIO = 1.2;
+const MIN_BANNER_WIDTH = 1080;
+const MIN_BANNER_HEIGHT = 1600;
 
 const readFileAsDataUrl = (file) => new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -51,6 +54,22 @@ const readFileAsDataUrl = (file) => new Promise((resolve, reject) => {
     reader.onerror = () => reject(new Error('Gagal membaca file gambar'));
     reader.readAsDataURL(file);
 });
+
+const getImageDimensions = (src) => new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
+    image.onerror = () => reject(new Error('Gagal membaca dimensi gambar'));
+    image.src = src;
+});
+
+const isPortraitBanner = ({ width, height }) => {
+    if (!width || !height) return false;
+    return (height / width) >= MIN_PORTRAIT_RATIO;
+};
+
+const isMinimumResolution = ({ width, height }) => {
+    return width >= MIN_BANNER_WIDTH && height >= MIN_BANNER_HEIGHT;
+};
 
 const BannersManagement = () => {
     const [banners, setBanners] = useState([]);
@@ -129,6 +148,15 @@ const BannersManagement = () => {
 
         try {
             const dataUrl = await readFileAsDataUrl(file);
+            const dimensions = await getImageDimensions(dataUrl);
+            if (!isPortraitBanner(dimensions)) {
+                alert('Banner harus format portrait (tinggi lebih besar dari lebar). Disarankan rasio 9:16.');
+                return;
+            }
+            if (!isMinimumResolution(dimensions)) {
+                alert(`Resolusi banner terlalu kecil (${dimensions.width}x${dimensions.height}). Minimal ${MIN_BANNER_WIDTH}x${MIN_BANNER_HEIGHT} agar tidak pecah di Home.`);
+                return;
+            }
             setFormData((prev) => ({
                 ...prev,
                 image_base64: dataUrl,
@@ -149,6 +177,24 @@ const BannersManagement = () => {
             alert('Title dan image (URL atau upload) wajib diisi');
             return;
         }
+
+        if (!formData.image_base64 && formData.image_url.trim()) {
+            try {
+                const dimensions = await getImageDimensions(formData.image_url.trim());
+                if (!isPortraitBanner(dimensions)) {
+                    alert('Image URL harus gambar portrait. Disarankan rasio 9:16.');
+                    return;
+                }
+                if (!isMinimumResolution(dimensions)) {
+                    alert(`Resolusi image URL terlalu kecil (${dimensions.width}x${dimensions.height}). Minimal ${MIN_BANNER_WIDTH}x${MIN_BANNER_HEIGHT}.`);
+                    return;
+                }
+            } catch (error) {
+                alert('Gagal memverifikasi ukuran gambar dari URL. Pastikan URL gambar valid dan bisa diakses.');
+                return;
+            }
+        }
+
         setSaving(true);
         try {
             const imageUrl = formData.image_base64 ? '' : String(formData.image_url || '').trim();
@@ -235,10 +281,10 @@ const BannersManagement = () => {
                 {banners.map((banner) => {
                     const imageSrc = apiService.resolveMediaUrl(banner.image_url);
                     return (
-                    <div key={banner.id} style={{ ...cardStyle, overflow: 'hidden', display: 'grid', gridTemplateColumns: '280px 1fr', gap: '0' }}>
+                    <div key={banner.id} style={{ ...cardStyle, overflow: 'hidden', display: 'grid', gridTemplateColumns: '170px 1fr', gap: '0' }}>
                         <div
                             style={{
-                                minHeight: '150px',
+                                minHeight: '220px',
                                 background: 'rgba(157, 90, 118, 0.08)',
                                 position: 'relative'
                             }}
@@ -247,7 +293,7 @@ const BannersManagement = () => {
                                 <img
                                     src={imageSrc}
                                     alt={banner.title}
-                                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                    style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center top' }}
                                     onError={(event) => {
                                         event.currentTarget.style.display = 'none';
                                     }}
@@ -362,7 +408,7 @@ const BannersManagement = () => {
                             />
                             <div style={{ display: 'grid', gap: '8px' }}>
                                 <label style={{ fontSize: '0.84rem', color: 'var(--text-body)' }}>
-                                    Upload gambar banner (opsional, maks 5MB)
+                                    Upload gambar banner portrait (opsional, maks 5MB)
                                 </label>
                                 <input type="file" accept="image/*" onChange={handleImageFileChange} style={fieldStyle} />
                                 {selectedImageName ? (
@@ -371,20 +417,25 @@ const BannersManagement = () => {
                                     </div>
                                 ) : null}
                                 <div style={{ fontSize: '0.78rem', color: 'var(--text-body)' }}>
-                                    Jika upload dipilih, URL gambar akan diabaikan.
+                                    Wajib format portrait. Jika upload dipilih, URL gambar akan diabaikan.
+                                </div>
+                                <div style={{ fontSize: '0.78rem', color: 'var(--text-body)' }}>
+                                    Resolusi minimum disarankan: {MIN_BANNER_WIDTH}x{MIN_BANNER_HEIGHT} (portrait) agar hasil di Home tidak pecah.
                                 </div>
                             </div>
                             {(formData.image_base64 || formData.image_url) ? (
                                 <div style={{ border: '1px dashed rgba(157,90,118,0.3)', borderRadius: '12px', padding: '10px', background: 'rgba(255,255,255,0.55)' }}>
                                     <div style={{ fontSize: '0.8rem', color: 'var(--text-body)', marginBottom: '8px' }}>Preview gambar banner</div>
-                                    <img
-                                        src={formData.image_base64 || apiService.resolveMediaUrl(formData.image_url)}
-                                        alt="Preview banner"
-                                        style={{ width: '100%', maxHeight: '220px', objectFit: 'cover', borderRadius: '10px' }}
-                                        onError={(event) => {
-                                            event.currentTarget.style.display = 'none';
-                                        }}
-                                    />
+                                    <div style={{ width: '100%', display: 'flex', justifyContent: 'center' }}>
+                                        <img
+                                            src={formData.image_base64 || apiService.resolveMediaUrl(formData.image_url)}
+                                            alt="Preview banner"
+                                            style={{ width: '170px', aspectRatio: '9 / 16', objectFit: 'cover', objectPosition: 'center top', borderRadius: '10px' }}
+                                            onError={(event) => {
+                                                event.currentTarget.style.display = 'none';
+                                            }}
+                                        />
+                                    </div>
                                 </div>
                             ) : null}
                             <textarea value={formData.description} onChange={(event) => setValue('description', event.target.value)} placeholder="Description" rows={3} style={fieldStyle} />

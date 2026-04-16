@@ -4,8 +4,7 @@ import { AlertCircle, Sparkles } from 'lucide-react';
 import StatusIndicators from '../components/scanner/StatusIndicators';
 import OvalFrame from '../components/scanner/OvalFrame';
 import ControlButtons from '../components/scanner/ControlButtons';
-import { isAuthenticated, isGuestSession } from '../utils/auth';
-import { checkAndUseToken, getTokenInfo } from '../utils/tokenSystem';
+// Auth and token imports REMOVED FOR KIOSK MODE - No authentication required
 import { 
     THRESHOLDS, 
     calculateBrightness, 
@@ -29,6 +28,8 @@ const ScannerEnhanced = () => {
     const [isCapturing, setIsCapturing] = useState(false);
     const [facingMode, setFacingMode] = useState('user');
     const [capturedImage, setCapturedImage] = useState(null); // For preview
+    const [previewAutoCountdown, setPreviewAutoCountdown] = useState(null);
+    const [isAutoProceeding, setIsAutoProceeding] = useState(false);
     
     // Enhanced detection states
     const [faceDetected, setFaceDetected] = useState(false);
@@ -45,6 +46,7 @@ const ScannerEnhanced = () => {
     const [zoomLevel, setZoomLevel] = useState(1); // 0.5 to 2.0
     const [qualityLevel, setQualityLevel] = useState(1); // 0.5 to 2.0
     const [showControls, setShowControls] = useState(false);
+    const previewAutoTimerRef = useRef(null);
 
     // Use thresholds from helper
     const { BRIGHTNESS_MIN, BRIGHTNESS_MAX } = THRESHOLDS;
@@ -213,14 +215,23 @@ const ScannerEnhanced = () => {
                 if (videoRef.current) {
                     // Detect orientation and set appropriate resolution
                     const isPortrait = window.innerHeight > window.innerWidth;
-                    console.log(`📱 Is Portrait: ${isPortrait}`);
+                    const isKioskMode = window.innerWidth >= 768 && isPortrait;
                     
-                    const cameraWidth = isPortrait ? Math.floor(1280 * qualityLevel) : Math.floor(1280 * qualityLevel);
-                    const cameraHeight = isPortrait ? Math.floor(720 * qualityLevel) : Math.floor(720 * qualityLevel);
+                    console.log(`📱 Is Portrait: ${isPortrait}`);
+                    console.log(`🖥️ Is Kiosk Mode: ${isKioskMode}`);
+                    
+                    // KIOSK MODE: Use much higher resolution for better quality
+                    // Mobile: 1280x720, Kiosk: 1920x1080 (Full HD)
+                    const baseWidth = isKioskMode ? 1920 : 1280;
+                    const baseHeight = isKioskMode ? 1080 : 720;
+                    
+                    const cameraWidth = Math.floor(baseWidth * qualityLevel);
+                    const cameraHeight = Math.floor(baseHeight * qualityLevel);
                     
                     console.log(`📱 Orientation: ${isPortrait ? 'Portrait' : 'Landscape'}`);
                     console.log(`📹 Camera Resolution: ${cameraWidth}x${cameraHeight}`);
                     console.log(`🖥️ Window Size: ${window.innerWidth}x${window.innerHeight}`);
+                    console.log(`🎯 Quality Level: ${qualityLevel}x`);
                     
                     // iOS-specific camera constraints
                     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
@@ -421,9 +432,28 @@ const ScannerEnhanced = () => {
         isPreviewing.current = true; // Set flag to stop MediaPipe
         
         const canvas = document.createElement('canvas');
-        canvas.width = videoRef.current.videoWidth;
-        canvas.height = videoRef.current.videoHeight;
-        const ctx = canvas.getContext('2d');
+        
+        // KIOSK MODE: Use higher resolution for better quality
+        const isKioskMode = window.innerWidth >= 768 && window.innerHeight > window.innerWidth;
+        
+        // Get actual video dimensions
+        const videoWidth = videoRef.current.videoWidth;
+        const videoHeight = videoRef.current.videoHeight;
+        
+        // For kiosk, capture at higher resolution (up to 4K if available)
+        const captureScale = isKioskMode ? 2.0 : 1.5; // 2x for kiosk, 1.5x for mobile
+        
+        canvas.width = Math.min(videoWidth * captureScale, 3840); // Max 4K width
+        canvas.height = Math.min(videoHeight * captureScale, 2160); // Max 4K height
+        
+        const ctx = canvas.getContext('2d', { 
+            alpha: false, // No transparency for better compression
+            willReadFrequently: false 
+        });
+        
+        // Enable image smoothing for better quality
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
         
         // Mirror if front camera
         if (facingMode === 'user') {
@@ -431,26 +461,62 @@ const ScannerEnhanced = () => {
             ctx.scale(-1, 1);
         }
         
-        ctx.drawImage(videoRef.current, 0, 0);
+        // Draw with high quality
+        ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
         
-        const imageBase64 = canvas.toDataURL('image/jpeg', 0.95);
+        // Use PNG for lossless quality (better for AI analysis)
+        // Or JPEG with very high quality (0.98)
+        const imageBase64 = canvas.toDataURL('image/jpeg', 0.98); // Increased from 0.95 to 0.98
+        
+        console.log(`📸 Captured image: ${canvas.width}x${canvas.height} (${(imageBase64.length / 1024 / 1024).toFixed(2)}MB)`);
         
         // Show preview instead of going directly to result
         setCapturedImage(imageBase64);
     };
 
-    const confirmCapture = () => {
-        // TOKEN CHECK BEFORE PROCEEDING
-        const guest = !isAuthenticated() || isGuestSession();
-        const tokenCheck = checkAndUseToken('analysis', guest);
-        
-        if (!tokenCheck.success) {
-            alert(tokenCheck.message);
-            if (guest && window.confirm('Login untuk unlimited scan?')) {
-                navigate('/login');
-            }
-            return;
+    const clearPreviewAutoTimer = () => {
+        if (previewAutoTimerRef.current) {
+            clearInterval(previewAutoTimerRef.current);
+            previewAutoTimerRef.current = null;
         }
+    };
+
+    useEffect(() => {
+        clearPreviewAutoTimer();
+
+        if (!capturedImage) {
+            setPreviewAutoCountdown(null);
+            setIsAutoProceeding(false);
+            return undefined;
+        }
+
+        setPreviewAutoCountdown(5);
+        setIsAutoProceeding(false);
+
+        previewAutoTimerRef.current = setInterval(() => {
+            setPreviewAutoCountdown((prev) => {
+                if (prev === null) return null;
+                if (prev <= 1) {
+                    clearPreviewAutoTimer();
+                    setIsAutoProceeding(true);
+                    setTimeout(() => confirmCapture(true), 120);
+                    return 0;
+                }
+                return prev - 1;
+            });
+        }, 1000);
+
+        return () => {
+            clearPreviewAutoTimer();
+        };
+    }, [capturedImage]);
+
+    const confirmCapture = (isAutoTriggered = false) => {
+        clearPreviewAutoTimer();
+        setPreviewAutoCountdown(null);
+        setIsAutoProceeding(true);
+
+        // TOKEN CHECK REMOVED FOR KIOSK MODE - Unlimited scans without login
         
         // Clear any existing session before navigating to new analysis
         sessionStorage.removeItem('current_analysis_session');
@@ -466,6 +532,9 @@ const ScannerEnhanced = () => {
 
     const retakePhoto = () => {
         // Clear preview and allow retake
+        clearPreviewAutoTimer();
+        setPreviewAutoCountdown(null);
+        setIsAutoProceeding(false);
         setCapturedImage(null);
         setIsCapturing(false);
         isPreviewing.current = false; // Resume MediaPipe
@@ -491,6 +560,9 @@ const ScannerEnhanced = () => {
     };
 
     const retake = () => {
+        clearPreviewAutoTimer();
+        setPreviewAutoCountdown(null);
+        setIsAutoProceeding(false);
         setCapturedImage(null);
         setIsCapturing(false);
         stopCountdown();
@@ -517,7 +589,7 @@ const ScannerEnhanced = () => {
                         height: '100%', 
                         objectFit: 'cover',
                         transform: facingMode === 'user' ? 'scaleX(-1)' : 'none',
-                        filter: isCapturing ? 'brightness(1.5) blur(4px)' : 'none',
+                        filter: 'none', // Remove blur effect during capture
                         zoom: zoomLevel
                     }} 
                 />
@@ -721,63 +793,109 @@ const ScannerEnhanced = () => {
                         </div>
                     )}
                     
-                    {/* Warnings - HORIZONTAL, COMPACT, AT TOP */}
-                    {(hasGlasses || hasFilter) && (
-                        <div style={{ 
-                            display: 'flex', 
-                            gap: '8px', 
-                            justifyContent: 'center',
-                            marginTop: '12px',
-                            flexWrap: 'wrap'
-                        }}>
-                            {hasGlasses && (
-                                <div style={{ 
-                                    padding: '4px 10px', 
-                                    background: 'rgba(255, 190, 215, 0.25)', 
-                                    borderRadius: '12px',
-                                    border: '1px solid rgba(255, 190, 215, 0.4)',
-                                    backdropFilter: 'blur(8px)',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '4px'
+                    {/* Smart Multiple Notifications - UNIFORM STYLE */}
+                    <div style={{ 
+                        display: 'flex', 
+                        gap: '8px', 
+                        justifyContent: 'center',
+                        marginTop: '12px',
+                        flexWrap: 'wrap',
+                        maxWidth: '90%',
+                        margin: '12px auto 0'
+                    }}>
+                        {hasGlasses && (
+                            <div style={{ 
+                                padding: '6px 12px', 
+                                background: 'rgba(255, 190, 215, 0.25)', 
+                                borderRadius: '12px',
+                                border: '1px solid rgba(255, 190, 215, 0.4)',
+                                backdropFilter: 'blur(8px)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px'
+                            }}>
+                                <AlertCircle size={14} color="#fff" strokeWidth={2} />
+                                <span style={{ 
+                                    color: '#fff', 
+                                    fontSize: '0.75rem', 
+                                    fontWeight: 600, 
+                                    fontFamily: 'var(--font-sans)',
+                                    whiteSpace: 'nowrap'
                                 }}>
-                                    <AlertCircle size={11} color="#fff" />
-                                    <span style={{ 
-                                        color: '#fff', 
-                                        fontSize: '0.6rem', 
-                                        fontWeight: 600, 
-                                        fontFamily: 'var(--font-sans)',
-                                        whiteSpace: 'nowrap'
-                                    }}>
-                                        Lepas kacamata
-                                    </span>
-                                </div>
-                            )}
-                            {hasFilter && (
-                                <div style={{ 
-                                    padding: '4px 10px', 
-                                    background: 'rgba(255, 190, 215, 0.25)', 
-                                    borderRadius: '12px',
-                                    border: '1px solid rgba(255, 190, 215, 0.4)',
-                                    backdropFilter: 'blur(8px)',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '4px'
+                                    Lepas kacamata
+                                </span>
+                            </div>
+                        )}
+                        {!goodLight && faceDetected && (
+                            <div style={{ 
+                                padding: '6px 12px', 
+                                background: 'rgba(255, 190, 215, 0.25)', 
+                                borderRadius: '12px',
+                                border: '1px solid rgba(255, 190, 215, 0.4)',
+                                backdropFilter: 'blur(8px)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px'
+                            }}>
+                                <AlertCircle size={14} color="#fff" strokeWidth={2} />
+                                <span style={{ 
+                                    color: '#fff', 
+                                    fontSize: '0.75rem', 
+                                    fontWeight: 600, 
+                                    fontFamily: 'var(--font-sans)',
+                                    whiteSpace: 'nowrap'
                                 }}>
-                                    <AlertCircle size={11} color="#fff" />
-                                    <span style={{ 
-                                        color: '#fff', 
-                                        fontSize: '0.6rem', 
-                                        fontWeight: 600, 
-                                        fontFamily: 'var(--font-sans)',
-                                        whiteSpace: 'nowrap'
-                                    }}>
-                                        Nonaktifkan filter
-                                    </span>
-                                </div>
-                            )}
-                        </div>
-                    )}
+                                    {brightness < BRIGHTNESS_MIN ? 'Cahaya kurang' : 'Cahaya berlebih'}
+                                </span>
+                            </div>
+                        )}
+                        {!goodDistance && faceDetected && distance && (
+                            <div style={{ 
+                                padding: '6px 12px', 
+                                background: 'rgba(255, 190, 215, 0.25)', 
+                                borderRadius: '12px',
+                                border: '1px solid rgba(255, 190, 215, 0.4)',
+                                backdropFilter: 'blur(8px)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px'
+                            }}>
+                                <AlertCircle size={14} color="#fff" strokeWidth={2} />
+                                <span style={{ 
+                                    color: '#fff', 
+                                    fontSize: '0.75rem', 
+                                    fontWeight: 600, 
+                                    fontFamily: 'var(--font-sans)',
+                                    whiteSpace: 'nowrap'
+                                }}>
+                                    {distance}
+                                </span>
+                            </div>
+                        )}
+                        {hasFilter && (
+                            <div style={{ 
+                                padding: '6px 12px', 
+                                background: 'rgba(255, 190, 215, 0.25)', 
+                                borderRadius: '12px',
+                                border: '1px solid rgba(255, 190, 215, 0.4)',
+                                backdropFilter: 'blur(8px)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px'
+                            }}>
+                                <AlertCircle size={14} color="#fff" strokeWidth={2} />
+                                <span style={{ 
+                                    color: '#fff', 
+                                    fontSize: '0.75rem', 
+                                    fontWeight: 600, 
+                                    fontFamily: 'var(--font-sans)',
+                                    whiteSpace: 'nowrap'
+                                }}>
+                                    Nonaktifkan filter
+                                </span>
+                            </div>
+                        )}
+                    </div>
                 </div>
             )}
 
@@ -815,11 +933,7 @@ const ScannerEnhanced = () => {
             {/* Modular Control Buttons Component - HIDE when preview shown */}
             {!capturedImage && (
                 <ControlButtons 
-                    onUpload={handleUpload}
                     onCapture={captureImage}
-                    onFlip={handleFlip}
-                    onRetake={retake}
-                    fileInputRef={fileInputRef}
                     isCapturing={isCapturing}
                     isOptimal={isOptimal}
                     faceDetected={faceDetected}
@@ -827,74 +941,76 @@ const ScannerEnhanced = () => {
                 />
             )}
 
-            {/* Photo Preview Modal - RESPONSIVE & BEAUTIFUL */}
+            {/* Photo Preview Modal */}
             {capturedImage && (
                 <div style={{
                     position: 'fixed',
-                    top: 0,
-                    left: 0,
-                    width: '100%',
-                    height: '100%',
-                    background: 'linear-gradient(135deg, #f1d3e2 0%, #c084a0 50%, #9d5a76 100%)',
+                    inset: 0,
+                    background: 'linear-gradient(160deg, #f8ebf2 0%, #dcb1c4 45%, #9d5a76 100%)',
                     zIndex: 100,
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    padding: '0',
                     overflow: 'hidden'
                 }}>
-                    {/* Header */}
                     <div style={{
                         width: '100%',
-                        padding: '20px',
-                        background: 'rgba(0,0,0,0.3)',
-                        backdropFilter: 'blur(10px)',
-                        textAlign: 'center'
+                        textAlign: 'center',
+                        padding: '20px 20px 12px'
                     }}>
-                        <h2 style={{ 
-                            color: 'white', 
+                        <h2 style={{
+                            color: 'white',
                             margin: 0,
-                            fontSize: 'clamp(1.2rem, 5vw, 1.5rem)',
+                            fontSize: 'clamp(1.25rem, 5vw, 1.55rem)',
                             fontWeight: 700,
                             fontFamily: 'var(--font-display)',
-                            textShadow: '0 2px 10px rgba(0,0,0,0.3)'
+                            textShadow: '0 2px 8px rgba(0,0,0,0.25)'
                         }}>
                             Preview Foto
                         </h2>
                         <p style={{
                             color: 'rgba(255,255,255,0.9)',
-                            fontSize: 'clamp(0.8rem, 3vw, 0.9rem)',
-                            margin: '4px 0 0 0',
+                            fontSize: 'clamp(0.82rem, 3vw, 0.92rem)',
+                            margin: '4px 0 0',
                             fontFamily: 'var(--font-sans)'
                         }}>
                             Pastikan wajah terlihat jelas
                         </p>
+                        {previewAutoCountdown !== null && (
+                            <p style={{
+                                color: 'rgba(255,255,255,0.98)',
+                                fontSize: '0.86rem',
+                                margin: '10px 0 0',
+                                fontWeight: 700,
+                                letterSpacing: '0.15px',
+                                fontFamily: 'var(--font-sans)'
+                            }}>
+                                Melanjutkan otomatis dalam {previewAutoCountdown} detik
+                            </p>
+                        )}
                     </div>
-
-                    {/* Image Container - RESPONSIVE */}
                     <div style={{
                         flex: 1,
                         width: '100%',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        padding: '20px',
-                        position: 'relative'
+                        padding: '14px 20px 16px'
                     }}>
                         <div style={{
                             position: 'relative',
                             width: '100%',
-                            maxWidth: '500px',
+                            maxWidth: '520px',
                             aspectRatio: '3/4',
-                            borderRadius: '24px',
+                            borderRadius: '28px',
                             overflow: 'hidden',
-                            boxShadow: '0 20px 60px rgba(0,0,0,0.4)',
-                            border: '3px solid rgba(255,255,255,0.2)'
+                            boxShadow: '0 22px 56px rgba(66, 25, 45, 0.35)',
+                            border: '2px solid rgba(255,255,255,0.45)'
                         }}>
-                            <img 
-                                src={capturedImage} 
-                                alt="Preview" 
+                            <img
+                                src={capturedImage}
+                                alt="Preview"
                                 style={{
                                     width: '100%',
                                     height: '100%',
@@ -902,33 +1018,30 @@ const ScannerEnhanced = () => {
                                     display: 'block'
                                 }}
                             />
-                            
-                            {/* Quality Indicators Overlay */}
                             {(hasGlasses || hasFilter) && (
                                 <div style={{
                                     position: 'absolute',
-                                    top: '16px',
-                                    left: '16px',
-                                    right: '16px',
+                                    top: '14px',
+                                    left: '14px',
+                                    right: '14px',
                                     display: 'flex',
                                     flexDirection: 'column',
                                     gap: '8px'
                                 }}>
                                     {hasGlasses && (
                                         <div style={{
-                                            background: 'rgba(239, 68, 68, 0.95)',
+                                            background: 'rgba(239, 68, 68, 0.92)',
                                             padding: '8px 12px',
                                             borderRadius: '12px',
                                             backdropFilter: 'blur(10px)',
                                             display: 'flex',
                                             alignItems: 'center',
-                                            gap: '8px',
-                                            boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
+                                            gap: '8px'
                                         }}>
                                             <AlertCircle size={16} color="white" />
                                             <span style={{
                                                 color: 'white',
-                                                fontSize: 'clamp(0.75rem, 3vw, 0.85rem)',
+                                                fontSize: '0.84rem',
                                                 fontWeight: 600,
                                                 fontFamily: 'var(--font-sans)'
                                             }}>
@@ -938,19 +1051,18 @@ const ScannerEnhanced = () => {
                                     )}
                                     {hasFilter && (
                                         <div style={{
-                                            background: 'rgba(239, 68, 68, 0.95)',
+                                            background: 'rgba(239, 68, 68, 0.92)',
                                             padding: '8px 12px',
                                             borderRadius: '12px',
                                             backdropFilter: 'blur(10px)',
                                             display: 'flex',
                                             alignItems: 'center',
-                                            gap: '8px',
-                                            boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
+                                            gap: '8px'
                                         }}>
                                             <AlertCircle size={16} color="white" />
                                             <span style={{
                                                 color: 'white',
-                                                fontSize: 'clamp(0.75rem, 3vw, 0.85rem)',
+                                                fontSize: '0.84rem',
                                                 fontWeight: 600,
                                                 fontFamily: 'var(--font-sans)'
                                             }}>
@@ -962,71 +1074,60 @@ const ScannerEnhanced = () => {
                             )}
                         </div>
                     </div>
-
-                    {/* Action Buttons - RESPONSIVE */}
                     <div style={{
                         width: '100%',
-                        padding: '20px',
-                        background: 'rgba(0,0,0,0.3)',
-                        backdropFilter: 'blur(10px)',
+                        maxWidth: '520px',
+                        padding: '0 20px 24px',
                         display: 'flex',
                         flexDirection: 'column',
-                        gap: '12px',
-                        maxWidth: '500px',
-                        margin: '0 auto'
+                        gap: '12px'
                     }}>
                         <button
-                            onClick={confirmCapture}
+                            onClick={() => confirmCapture(false)}
+                            disabled={isAutoProceeding}
                             style={{
                                 width: '100%',
-                                padding: 'clamp(14px, 4vw, 18px)',
+                                padding: '16px',
                                 borderRadius: '16px',
                                 border: 'none',
-                                background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+                                background: 'linear-gradient(135deg, #c084a0 0%, #9d5a76 100%)',
                                 color: 'white',
-                                fontSize: 'clamp(0.95rem, 4vw, 1.1rem)',
+                                fontSize: 'clamp(0.97rem, 4vw, 1.08rem)',
                                 fontWeight: 700,
-                                cursor: 'pointer',
+                                cursor: isAutoProceeding ? 'not-allowed' : 'pointer',
                                 fontFamily: 'var(--font-sans)',
-                                boxShadow: '0 8px 24px rgba(245, 87, 108, 0.4)',
-                                transition: 'all 0.3s ease',
+                                boxShadow: '0 10px 26px rgba(157, 90, 118, 0.42)',
+                                transition: 'all 0.2s ease',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                gap: '8px'
+                                gap: '8px',
+                                opacity: isAutoProceeding ? 0.72 : 1
                             }}
-                            onMouseOver={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
-                            onMouseOut={(e) => e.currentTarget.style.transform = 'translateY(0)'}
                         >
                             <Sparkles size={20} />
-                            Lanjutkan Analisis
+                            {isAutoProceeding ? 'Memproses...' : 'Lanjutkan Analisis'}
                         </button>
                         <button
                             onClick={retakePhoto}
+                            disabled={isAutoProceeding}
                             style={{
                                 width: '100%',
-                                padding: 'clamp(14px, 4vw, 18px)',
+                                padding: '16px',
                                 borderRadius: '16px',
-                                border: '2px solid rgba(255,255,255,0.3)',
-                                background: 'rgba(255,255,255,0.1)',
+                                border: '2px solid rgba(255,255,255,0.44)',
+                                background: 'rgba(255,255,255,0.18)',
                                 color: 'white',
-                                fontSize: 'clamp(0.95rem, 4vw, 1.1rem)',
+                                fontSize: 'clamp(0.96rem, 4vw, 1.06rem)',
                                 fontWeight: 600,
-                                cursor: 'pointer',
+                                cursor: isAutoProceeding ? 'not-allowed' : 'pointer',
                                 fontFamily: 'var(--font-sans)',
                                 backdropFilter: 'blur(10px)',
-                                transition: 'all 0.3s ease'
-                            }}
-                            onMouseOver={(e) => {
-                                e.currentTarget.style.background = 'rgba(255,255,255,0.2)';
-                                e.currentTarget.style.transform = 'translateY(-2px)';
-                            }}
-                            onMouseOut={(e) => {
-                                e.currentTarget.style.background = 'rgba(255,255,255,0.1)';
-                                e.currentTarget.style.transform = 'translateY(0)';
+                                transition: 'all 0.2s ease',
+                                opacity: isAutoProceeding ? 0.6 : 1
                             }}
                         >
-                            🔄 Ulangi Foto
+                            Ulangi Foto
                         </button>
                     </div>
                 </div>
@@ -1117,3 +1218,4 @@ const ScannerEnhanced = () => {
 };
 
 export default ScannerEnhanced;
+

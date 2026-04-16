@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Home from './pages/Home';
+import ScanOnboarding from './pages/ScanOnboarding';
 import ScannerEnhanced from './pages/ScannerEnhanced';
 import AnalysisResult from './pages/AnalysisResult';
 import Recommendations from './pages/Recommendations';
@@ -18,7 +19,6 @@ import Login from './pages/Login';
 import Doctors from './pages/Doctors';
 import DoctorDetail from './pages/DoctorDetail';
 import DoctorBooking from './pages/DoctorBooking';
-import ProtectedRoute from './components/ProtectedRoute';
 import { cleanOldTokens } from './utils/tokenSystem';
 import apiService from './services/api';
 
@@ -50,8 +50,11 @@ function App() {
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/scan-prep" element={<ScanOnboarding />} />
         <Route path="/scan" element={<ScannerEnhanced />} />
         <Route path="/result" element={<AnalysisResult />} />
+        <Route path="/analysis/:sessionId" element={<AnalysisResult />} />
+        <Route path="/skinanalyzer/result/:sessionId" element={<AnalysisResult />} />
         <Route path="/recommendations" element={<Recommendations />} />
         <Route path="/products" element={<Products />} />
         <Route path="/products/:slug" element={<ProductDetail />} />
@@ -62,28 +65,12 @@ function App() {
         {/* Doctor Routes */}
         <Route path="/doctors" element={<Doctors />} />
         <Route path="/doctors/:id" element={<DoctorDetail />} />
-        <Route path="/doctors/:id/booking" element={
-          <ProtectedRoute>
-            <DoctorBooking />
-          </ProtectedRoute>
-        } />
+        <Route path="/doctors/:id/booking" element={<DoctorBooking />} />
         
-        {/* Protected Routes - Require Login */}
-        <Route path="/profile" element={
-          <ProtectedRoute>
-            <Profile />
-          </ProtectedRoute>
-        } />
-        <Route path="/history" element={
-          <ProtectedRoute>
-            <History />
-          </ProtectedRoute>
-        } />
-        <Route path="/chat" element={
-          <ProtectedRoute>
-            <Chat />
-          </ProtectedRoute>
-        } />
+        {/* KIOSK MODE: All routes are open, no authentication required */}
+        <Route path="/profile" element={<Profile />} />
+        <Route path="/history" element={<History />} />
+        <Route path="/chat" element={<Chat />} />
         
         {/* Admin Routes */}
         <Route path="/admin" element={<AdminLogin />} />

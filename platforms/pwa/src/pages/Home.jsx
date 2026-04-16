@@ -1,757 +1,475 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Sparkles, MessageCircle, Lightbulb, TrendingUp, User, Settings, Video } from 'lucide-react';
-import BottomNav from '../components/BottomNav';
+import { ArrowRight } from 'lucide-react';
+import CantikLogo from '../assets/logo/vite.svg';
 import apiService from '../services/api';
-import { isAuthenticated, isGuestSession } from '../utils/auth';
-import { getTokenInfo, getHoursUntilReset } from '../utils/tokenSystem';
-
-const ProductCard = ({ image, name, brand, price, onClick }) => (
-    <div style={{ minWidth: '130px', maxWidth: '130px', padding: '10px', display: 'flex', flexDirection: 'column', gap: '8px', cursor: 'pointer', background: 'rgba(255, 255, 255, 0.4)', backdropFilter: 'blur(25px)', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.6)' }} onClick={onClick}>
-        <div style={{
-            height: '130px',
-            borderRadius: '12px',
-            background: 'rgba(255,255,255,0.5)',
-            overflow: 'hidden',
-            display: 'flex', alignItems: 'center', justifyContent: 'center'
-        }}>
-            {image ? (
-                <img src={image} style={{ width: '85%', height: '85%', objectFit: 'contain' }} alt={name} onError={(e) => e.target.style.display = 'none'} />
-            ) : (
-                <div style={{ width: '85%', height: '85%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-body)', fontSize: '0.7rem', fontFamily: 'var(--font-sans)' }}>
-                    No Image
-                </div>
-            )}
-        </div>
-        <div style={{ padding: '2px' }}>
-            <h4 style={{ fontSize: '0.7rem', fontWeight: 500, color: 'var(--text-headline)', marginBottom: '4px', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', fontFamily: 'var(--font-sans)' }}>{name}</h4>
-            {brand ? (
-                <p style={{ fontSize: '0.65rem', color: 'var(--text-body)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-                    {brand}
-                </p>
-            ) : null}
-            {price ? (
-                <p style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-headline)', fontFamily: 'var(--font-sans)' }}>Rp {Number(price || 0).toLocaleString('id-ID')}</p>
-            ) : (
-                <p style={{ fontSize: '0.65rem', color: 'var(--primary-color)', fontWeight: 500, fontFamily: 'var(--font-sans)' }}>Lihat Detail</p>
-            )}
-        </div>
-    </div>
-);
 
 const Home = () => {
     const navigate = useNavigate();
-    const [products, setProducts] = useState([]);
-    const [userName, setUserName] = useState('Guest');
     const [banners, setBanners] = useState([]);
     const [currentBannerIndex, setCurrentBannerIndex] = useState(0);
-    const [productsLoading, setProductsLoading] = useState(true);
-    const [dailyTip, setDailyTip] = useState('');
-    const [latestArticle, setLatestArticle] = useState(null);
-    const [chatInput, setChatInput] = useState('');
-    const [appTagline, setAppTagline] = useState('cantik.ai asisten kulit sehatmu');
-    const [isGuestMode, setIsGuestMode] = useState(true);
-    const [analysisTokenInfo, setAnalysisTokenInfo] = useState(null);
-    const [chatTokenInfo, setChatTokenInfo] = useState(null);
-    const [hoursUntilReset, setHoursUntilReset] = useState(getHoursUntilReset());
-
-    // Daily tips array - will rotate daily
-    const skincareTips = [
-        "Gunakan sunscreen setiap hari, bahkan saat di dalam ruangan. UV rays dapat menembus jendela!",
-        "Cuci wajah maksimal 2x sehari. Terlalu sering mencuci dapat menghilangkan minyak alami kulit.",
-        "Minum air putih minimal 8 gelas sehari untuk menjaga hidrasi kulit dari dalam.",
-        "Tidur 7-8 jam setiap malam. Kulit melakukan regenerasi saat Anda tidur.",
-        "Ganti sarung bantal seminggu sekali untuk mencegah bakteri penyebab jerawat.",
-        "Aplikasikan skincare dari tekstur paling ringan ke paling berat.",
-        "Jangan lupa aplikasikan skincare di leher dan area dada, bukan hanya wajah.",
-        "Hindari menyentuh wajah terlalu sering untuk mencegah transfer bakteri.",
-        "Eksfoliasi 1-2x seminggu untuk mengangkat sel kulit mati.",
-        "Konsumsi makanan kaya antioksidan seperti buah dan sayuran untuk kulit sehat."
-    ];
+    const [historyHover, setHistoryHover] = useState(false);
+    const [ctaHover, setCtaHover] = useState(false);
 
     useEffect(() => {
-        // Fetch banners
-        fetchBanners();
-        
-        // Fetch all products
-        fetchAllProducts();
-        
-        // Fetch latest article
-        fetchLatestArticle();
-        
-        // Load user data from localStorage
-        const storedName =
-            localStorage.getItem('cantik_user_name') ||
-            localStorage.getItem('userName') ||
-            'Guest';
-        
-        setUserName(storedName);
-
-        try {
-            const rawSettings = localStorage.getItem('cantik_public_settings');
-            if (rawSettings) {
-                const parsedSettings = JSON.parse(rawSettings);
-                if (parsedSettings['app.tagline']) {
-                    setAppTagline(parsedSettings['app.tagline']);
-                }
+        const loadBanners = async () => {
+            try {
+                const result = await apiService.getBanners();
+                const active = Array.isArray(result)
+                    ? result.filter((item) => Number(item.is_active) === 1)
+                    : [];
+                setBanners(active);
+            } catch (error) {
+                console.error('Error fetching banners:', error);
+                setBanners([]);
             }
-        } catch {
-            // Ignore invalid cached settings
-        }
+        };
 
-        // Set daily tip based on day of year (changes daily)
-        const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0)) / (1000 * 60 * 60 * 24));
-        setDailyTip(skincareTips[dayOfYear % skincareTips.length]);
+        loadBanners();
     }, []);
 
     useEffect(() => {
-        // Auto-rotate banners every 5 seconds
-        if (banners.length > 1) {
-            const interval = setInterval(() => {
-                setCurrentBannerIndex((prev) => (prev + 1) % banners.length);
-            }, 5000);
-            return () => clearInterval(interval);
-        }
+        if (banners.length <= 1) return undefined;
+        const timer = setInterval(() => {
+            setCurrentBannerIndex((prev) => (prev + 1) % banners.length);
+        }, 5000);
+        return () => clearInterval(timer);
     }, [banners]);
 
-    useEffect(() => {
-        refreshGuestTokenInfo();
-        window.addEventListener('focus', refreshGuestTokenInfo);
-        const interval = setInterval(refreshGuestTokenInfo, 30000);
-        return () => {
-            window.removeEventListener('focus', refreshGuestTokenInfo);
-            clearInterval(interval);
-        };
-    }, []);
-
-    const fetchBanners = async () => {
-        try {
-            const bannersData = await apiService.getBanners();
-            setBanners(bannersData.filter(b => b.is_active));
-            console.log('✅ Banners loaded:', bannersData.length);
-        } catch (error) {
-            console.error('❌ Error fetching banners:', error);
-        }
-    };
-
-    const fetchAllProducts = async () => {
-        try {
-            setProductsLoading(true);
-            // Fetch from Beautylatory API instead of local backend
-            const response = await fetch(`${import.meta.env.VITE_PRODUCTS_API_URL}?page=1`);
-            
-            if (!response.ok) {
-                throw new Error('Failed to fetch products from Beautylatory API');
-            }
-            
-            const data = await response.json();
-            // Take first 4 products for home page display
-            setProducts(data.data.slice(0, 4));
-            console.log('✅ Beautylatory products loaded:', data.data.length);
-        } catch (error) {
-            console.error('❌ Error fetching Beautylatory products:', error);
-            setProducts([]);
-        } finally {
-            setProductsLoading(false);
-        }
-    };
-
-    const fetchLatestArticle = async () => {
-        try {
-            const articlesData = await apiService.getArticles();
-            if (articlesData && articlesData.length > 0) {
-                setLatestArticle(articlesData[0]);
-            }
-        } catch (error) {
-            console.error('❌ Error fetching articles:', error);
-        }
-    };
-
-    const refreshGuestTokenInfo = () => {
-        const guestMode = !isAuthenticated() || isGuestSession();
-        setIsGuestMode(guestMode);
-
-        if (!guestMode) {
-            setAnalysisTokenInfo(null);
-            setChatTokenInfo(null);
-            return;
-        }
-
-        setAnalysisTokenInfo(getTokenInfo('analysis', true));
-        setChatTokenInfo(getTokenInfo('chat', true));
-        setHoursUntilReset(getHoursUntilReset());
-    };
-
-    const nextBanner = () => {
-        setCurrentBannerIndex((prev) => (prev + 1) % banners.length);
-    };
-
-    const prevBanner = () => {
-        setCurrentBannerIndex((prev) => (prev - 1 + banners.length) % banners.length);
-    };
-
-    // Touch swipe support
-    const [touchStart, setTouchStart] = useState(0);
-    const [touchEnd, setTouchEnd] = useState(0);
-
-    const handleTouchStart = (e) => {
-        setTouchStart(e.targetTouches[0].clientX);
-    };
-
-    const handleTouchMove = (e) => {
-        setTouchEnd(e.targetTouches[0].clientX);
-    };
-
-    const handleTouchEnd = () => {
-        if (touchStart - touchEnd > 50) {
-            // Swipe left
-            nextBanner();
-        }
-        if (touchStart - touchEnd < -50) {
-            // Swipe right
-            prevBanner();
-        }
-    };
+    const heroImage = banners[currentBannerIndex]?.image_url
+        ? apiService.resolveMediaUrl(banners[currentBannerIndex].image_url)
+        : 'https://images.unsplash.com/photo-1544717302-de2939b7ef71?auto=format&fit=crop&w=1200&q=80';
 
     return (
-        <div className="app-container" style={{ animation: 'etherealFade 0.6s ease' }}>
-            <div className="screen-content" style={{ paddingBottom: '100px', padding: 0 }}>
-                {/* Banner Slider - Full Width with Rounded Bottom */}
-                {banners.length > 0 && (
-                    <div 
-                        style={{ 
-                            position: 'relative', 
-                            width: '100%',
-                            paddingTop: '56.25%',
-                            overflow: 'hidden',
-                            marginBottom: '20px',
-                            borderRadius: '0 0 24px 24px'
+        <div className="app-container" style={{ background: '#f3e6ee' }}>
+            <div className="screen-content" style={{ padding: 0, position: 'relative', minHeight: '100vh' }}>
+                <img
+                    src={heroImage}
+                    alt="Skin onboarding"
+                    style={{
+                        position: 'absolute',
+                        inset: 0,
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover',
+                        imageRendering: '-webkit-optimize-contrast'
+                    }}
+                />
+
+                <div
+                    style={{
+                        position: 'absolute',
+                        inset: 0,
+                        background: 'linear-gradient(180deg, rgba(65, 40, 54, 0.08) 0%, rgba(65, 40, 54, 0.16) 46%, rgba(65, 40, 54, 0.55) 100%)',
+                        overflow: 'hidden'
+                    }}
+                >
+                    {/* Floating ambient orbs */}
+                    <div style={{
+                        position: 'absolute',
+                        width: '300px',
+                        height: '300px',
+                        borderRadius: '50%',
+                        background: 'radial-gradient(circle, rgba(255, 255, 255, 0.08) 0%, transparent 70%)',
+                        top: '10%',
+                        left: '-10%',
+                        animation: 'floatOrb 20s ease-in-out infinite',
+                        filter: 'blur(40px)'
+                    }} />
+                    <div style={{
+                        position: 'absolute',
+                        width: '250px',
+                        height: '250px',
+                        borderRadius: '50%',
+                        background: 'radial-gradient(circle, rgba(255, 200, 220, 0.06) 0%, transparent 70%)',
+                        top: '40%',
+                        right: '-8%',
+                        animation: 'floatOrb 25s ease-in-out infinite 5s',
+                        filter: 'blur(50px)'
+                    }} />
+                    <div style={{
+                        position: 'absolute',
+                        width: '200px',
+                        height: '200px',
+                        borderRadius: '50%',
+                        background: 'radial-gradient(circle, rgba(255, 255, 255, 0.05) 0%, transparent 70%)',
+                        bottom: '15%',
+                        left: '20%',
+                        animation: 'floatOrb 18s ease-in-out infinite 3s',
+                        filter: 'blur(45px)'
+                    }} />
+                    
+                    {/* Subtle sparkles */}
+                    <div style={{
+                        position: 'absolute',
+                        width: '3px',
+                        height: '3px',
+                        borderRadius: '50%',
+                        background: 'rgba(255, 255, 255, 0.6)',
+                        top: '25%',
+                        left: '30%',
+                        animation: 'twinkle 3s ease-in-out infinite',
+                        boxShadow: '0 0 10px rgba(255, 255, 255, 0.5)'
+                    }} />
+                    <div style={{
+                        position: 'absolute',
+                        width: '2px',
+                        height: '2px',
+                        borderRadius: '50%',
+                        background: 'rgba(255, 255, 255, 0.5)',
+                        top: '60%',
+                        right: '25%',
+                        animation: 'twinkle 4s ease-in-out infinite 1s',
+                        boxShadow: '0 0 8px rgba(255, 255, 255, 0.4)'
+                    }} />
+                    <div style={{
+                        position: 'absolute',
+                        width: '2.5px',
+                        height: '2.5px',
+                        borderRadius: '50%',
+                        background: 'rgba(255, 255, 255, 0.55)',
+                        top: '45%',
+                        left: '70%',
+                        animation: 'twinkle 3.5s ease-in-out infinite 2s',
+                        boxShadow: '0 0 9px rgba(255, 255, 255, 0.45)'
+                    }} />
+                    <div style={{
+                        position: 'absolute',
+                        width: '2px',
+                        height: '2px',
+                        borderRadius: '50%',
+                        background: 'rgba(255, 255, 255, 0.5)',
+                        top: '80%',
+                        left: '15%',
+                        animation: 'twinkle 4.5s ease-in-out infinite 0.5s',
+                        boxShadow: '0 0 8px rgba(255, 255, 255, 0.4)'
+                    }} />
+                </div>
+
+                <div
+                    style={{
+                        position: 'relative',
+                        zIndex: 2,
+                        minHeight: '100vh',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'flex-end',
+                        alignItems: 'stretch',
+                        padding: '48px 48px 56px'
+                    }}
+                >
+                    <button
+                        onClick={() => navigate('/history')}
+                        onMouseEnter={() => setHistoryHover(true)}
+                        onMouseLeave={() => setHistoryHover(false)}
+                        onFocus={() => setHistoryHover(true)}
+                        onBlur={() => setHistoryHover(false)}
+                        style={{
+                            position: 'absolute',
+                            top: '48px',
+                            left: '48px',
+                            border: 'none',
+                            background: 'transparent',
+                            padding: 0,
+                            color: 'rgba(255,255,255,0.96)',
+                            fontSize: '0.95rem',
+                            fontWeight: 600,
+                            letterSpacing: '0.005em',
+                            fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, sans-serif',
+                            cursor: 'pointer',
+                            textShadow: '0 2px 8px rgba(0,0,0,0.25)',
+                            opacity: historyHover ? 0.85 : 1,
+                            transition: 'opacity 220ms ease, transform 220ms ease',
+                            transform: historyHover ? 'translateY(-1px)' : 'translateY(0)'
                         }}
-                        onTouchStart={handleTouchStart}
-                        onTouchMove={handleTouchMove}
-                        onTouchEnd={handleTouchEnd}
                     >
-                        {banners.map((banner, index) => (
-                            <div
-                                key={banner.id}
+                        <span
+                            style={{
+                                position: 'relative',
+                                display: 'inline-block',
+                                paddingBottom: '2px'
+                            }}
+                        >
+                            Riwayat
+                            <span
                                 style={{
                                     position: 'absolute',
-                                    top: 0,
                                     left: 0,
+                                    bottom: 0,
                                     width: '100%',
-                                    height: '100%',
-                                    opacity: index === currentBannerIndex ? 1 : 0,
-                                    transition: 'opacity 0.5s ease',
-                                    cursor: banner.link_url ? 'pointer' : 'default'
+                                    height: '1px',
+                                    background: 'rgba(255,255,255,0.95)',
+                                    transformOrigin: 'left',
+                                    transform: historyHover ? 'scaleX(1)' : 'scaleX(0)',
+                                    transition: 'transform 220ms ease'
                                 }}
-                                onClick={() => banner.link_url && navigate(banner.link_url)}
-                            >
-                                <img 
-                                    src={apiService.resolveMediaUrl(banner.image_url)} 
-                                    alt={banner.title}
-                                    style={{
-                                        width: '100%',
-                                        height: '100%',
-                                        objectFit: 'cover'
-                                    }}
-                                />
-                            </div>
-                        ))}
-                        
-                        {banners.length > 1 && (
-                            <>
-                                {/* Dots Indicator Only */}
-                                <div style={{
-                                    position: 'absolute',
-                                    bottom: '12px',
-                                    left: '50%',
-                                    transform: 'translateX(-50%)',
-                                    display: 'flex',
-                                    gap: '6px',
-                                    zIndex: 10
-                                }}>
-                                    {banners.map((_, index) => (
-                                        <div
-                                            key={index}
-                                            onClick={() => setCurrentBannerIndex(index)}
-                                            style={{
-                                                width: index === currentBannerIndex ? '24px' : '8px',
-                                                height: '8px',
-                                                borderRadius: '4px',
-                                                background: index === currentBannerIndex ? 'white' : 'rgba(255,255,255,0.5)',
-                                                cursor: 'pointer',
-                                                transition: 'all 0.3s'
-                                            }}
-                                        />
-                                    ))}
-                                </div>
-                            </>
-                        )}
-                    </div>
-                )}
+                            />
+                        </span>
+                    </button>
 
-                {/* Content with padding */}
-                <div style={{ padding: '0 20px' }}>
+                    <img
+                        src={CantikLogo}
+                        alt="Cantik AI logo"
+                        style={{
+                            position: 'absolute',
+                            top: '42px',
+                            right: '46px',
+                            width: '68px',
+                            height: '68px',
+                            objectFit: 'contain',
+                            filter: 'drop-shadow(0 10px 14px rgba(40, 20, 31, 0.2))'
+                        }}
+                    />
 
-                {/* Header - Compact with Profile & Settings */}
-                <div style={{ marginBottom: '24px', padding: '0 17px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                        <div style={{ flex: 1 }}>
-                            <h1 className="headline" style={{ fontSize: '1.8rem', marginBottom: '0', fontFamily: 'var(--font-serif)', textAlign: 'left' }}>
-                                {isGuestMode ? 'Halo!' : `Halo, ${userName}!`}
-                            </h1>
-                        </div>
-                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                            {/* Profile Icon */}
-                            <div 
-                                onClick={() => navigate('/profile')}
-                                style={{
-                                    width: '40px',
-                                    height: '40px',
-                                    borderRadius: '12px',
-                                    background: 'rgba(255, 255, 255, 0.5)',
-                                    backdropFilter: 'blur(25px)',
-                                    border: '1px solid rgba(255,255,255,0.8)',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    cursor: 'pointer',
-                                    boxShadow: '0 4px 12px rgba(157, 90, 118, 0.08)',
-                                    transition: 'all 0.2s'
-                                }}
-                                onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.7)'}
-                                onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.5)'}
-                            >
-                                <User size={20} color="var(--primary-color)" />
-                            </div>
-                            {/* Settings Icon */}
-                            <div 
-                                onClick={() => navigate('/settings')}
-                                style={{
-                                    width: '40px',
-                                    height: '40px',
-                                    borderRadius: '12px',
-                                    background: 'rgba(255, 255, 255, 0.5)',
-                                    backdropFilter: 'blur(25px)',
-                                    border: '1px solid rgba(255,255,255,0.8)',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    cursor: 'pointer',
-                                    boxShadow: '0 4px 12px rgba(157, 90, 118, 0.08)',
-                                    transition: 'all 0.2s'
-                                }}
-                                onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.7)'}
-                                onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.5)'}
-                            >
-                                <Settings size={20} color="var(--primary-color)" />
-                            </div>
-                        </div>
-                    </div>
-                    <p style={{ fontSize: '0.85rem', fontFamily: 'var(--font-sans)', textAlign: 'left', color: 'var(--text-body)', marginBottom: '16px' }}>{appTagline}</p>
-
-                    {isGuestMode && analysisTokenInfo && chatTokenInfo && (
-                        <div className="card-glass" style={{ padding: '14px', marginBottom: '14px', borderRadius: '18px', background: 'linear-gradient(135deg, rgba(157, 90, 118, 0.12), rgba(241, 211, 226, 0.14))' }}>
-                            <p style={{ fontSize: '0.78rem', color: 'var(--primary-color)', fontWeight: 700, marginBottom: '10px', letterSpacing: '0.3px' }}>
-                                GUEST TOKEN HARI INI
-                            </p>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
-                                <div style={{ background: 'rgba(255,255,255,0.6)', borderRadius: '12px', padding: '10px' }}>
-                                    <p style={{ fontSize: '0.7rem', color: 'var(--text-body)', marginBottom: '3px' }}>Analisis</p>
-                                    <p style={{ fontSize: '1rem', color: 'var(--text-headline)', margin: 0, fontWeight: 700 }}>
-                                        {analysisTokenInfo.remaining}/{analysisTokenInfo.limit}
-                                    </p>
-                                </div>
-                                <div style={{ background: 'rgba(255,255,255,0.6)', borderRadius: '12px', padding: '10px' }}>
-                                    <p style={{ fontSize: '0.7rem', color: 'var(--text-body)', marginBottom: '3px' }}>Chat</p>
-                                    <p style={{ fontSize: '1rem', color: 'var(--text-headline)', margin: 0, fontWeight: 700 }}>
-                                        {chatTokenInfo.remaining}/{chatTokenInfo.limit}
-                                    </p>
-                                </div>
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
-                                <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--text-body)' }}>
-                                    Reset dalam ±{hoursUntilReset} jam
-                                </p>
-                                <button
-                                    onClick={() => navigate('/login')}
-                                    style={{
-                                        border: 'none',
-                                        borderRadius: '10px',
-                                        padding: '8px 12px',
-                                        background: 'var(--primary-color)',
-                                        color: 'white',
-                                        fontSize: '0.75rem',
-                                        fontWeight: 600,
-                                        cursor: 'pointer'
-                                    }}
-                                >
-                                    Login Unlimited
-                                </button>
-                            </div>
-                        </div>
-                    )}
-                    
-                    {/* Quick Questions - Above chat input */}
-                    <div style={{ 
-                        display: 'flex', 
-                        gap: '6px', 
-                        overflowX: 'auto',
-                        marginBottom: '10px',
-                        paddingBottom: '2px'
-                    }} className="no-scrollbar">
-                        {[
-                            { icon: Sparkles, text: 'Analisis Kulit' },
-                            { icon: Lightbulb, text: 'Tips Harian' },
-                            { icon: TrendingUp, text: 'Rekomendasi' }
-                        ].map((item, index) => {
-                            const fullText = index === 0 ? 'Analisis Kulit Saya' : index === 1 ? 'Tips Skincare Harian' : 'Rekomendasi Produk';
-                            return (
-                                <div
-                                    key={index}
-                                    onClick={() => navigate('/chat', { state: { initialMessage: fullText } })}
-                                    style={{
-                                        padding: '6px 10px',
-                                        borderRadius: '14px',
-                                        background: 'rgba(255, 255, 255, 0.5)',
-                                        backdropFilter: 'blur(20px)',
-                                        border: '1px solid rgba(255,255,255,0.7)',
-                                        boxShadow: '0 2px 6px rgba(157, 90, 118, 0.05)',
-                                        cursor: 'pointer',
-                                        whiteSpace: 'nowrap',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '5px',
-                                        fontSize: '0.7rem',
-                                        fontFamily: 'var(--font-sans)',
-                                        color: 'var(--text-headline)',
-                                        fontWeight: 500,
-                                        transition: 'all 0.2s',
-                                        height: '30px',
-                                        flex: 1
-                                    }}
-                                    onMouseEnter={(e) => {
-                                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.6)';
-                                        e.currentTarget.style.transform = 'translateY(-1px)';
-                                    }}
-                                    onMouseLeave={(e) => {
-                                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.5)';
-                                        e.currentTarget.style.transform = 'translateY(0)';
-                                    }}
-                                >
-                                    <item.icon size={12} color="var(--primary-color)" />
-                                    {item.text}
-                                </div>
-                            );
-                        })}
-                    </div>
-                    
-                    {/* Chat Input Bubble */}
-                    <div 
-                        style={{ 
-                            padding: '10px 16px', 
-                            background: 'rgba(255, 255, 255, 0.5)', 
-                            backdropFilter: 'blur(25px)', 
-                            borderRadius: '20px', 
-                            border: '1px solid rgba(255,255,255,0.8)', 
-                            boxShadow: '0 4px 12px rgba(157, 90, 118, 0.08)',
+                    {/* Glassmorphism Pill Button - Above Cantik.ai */}
+                    <button
+                        onClick={() => navigate('/scan-prep')}
+                        onMouseEnter={() => setCtaHover(true)}
+                        onMouseLeave={() => setCtaHover(false)}
+                        onFocus={() => setCtaHover(true)}
+                        onBlur={() => setCtaHover(false)}
+                        style={{
+                            width: '100%',
+                            height: '80px',
+                            border: '1px solid rgba(255, 255, 255, 0.2)',
+                            borderRadius: '28px',
+                            background: ctaHover 
+                                ? 'rgba(255, 255, 255, 0.14)' 
+                                : 'rgba(255, 255, 255, 0.08)',
+                            backdropFilter: 'blur(28px) saturate(160%)',
+                            WebkitBackdropFilter: 'blur(28px) saturate(160%)',
+                            color: 'rgba(255, 255, 255, 0.98)',
                             display: 'flex',
                             alignItems: 'center',
-                            gap: '10px',
-                            height: '48px'
+                            justifyContent: 'center',
+                            gap: '14px',
+                            cursor: 'pointer',
+                            boxShadow: ctaHover
+                                ? '0 16px 40px rgba(0, 0, 0, 0.2), 0 0 30px rgba(255, 255, 255, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.25)'
+                                : '0 10px 28px rgba(0, 0, 0, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.15)',
+                            transform: ctaHover ? 'translateY(-3px) scale(1.01)' : 'translateY(0) scale(1)',
+                            transition: 'all 300ms cubic-bezier(0.34, 1.56, 0.64, 1)',
+                            padding: '0 36px',
+                            marginBottom: '44px',
+                            position: 'relative',
+                            overflow: 'hidden',
+                            fontSize: '1.15rem',
+                            fontWeight: 600,
+                            letterSpacing: '0.005em',
+                            fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, sans-serif',
+                            textShadow: '0 2px 6px rgba(0, 0, 0, 0.15)'
                         }}
                     >
-                        <MessageCircle size={20} color="var(--text-body)" />
-                        <input
-                            type="text"
-                            placeholder="Tanya apa saja tentang skincare..."
-                            value={chatInput}
-                            onChange={(e) => setChatInput(e.target.value)}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter' && chatInput.trim()) {
-                                    navigate('/chat', { state: { initialMessage: chatInput } });
-                                }
-                            }}
+                        {/* Animated shimmer effect */}
+                        <div style={{
+                            position: 'absolute',
+                            top: 0,
+                            left: '-100%',
+                            width: '100%',
+                            height: '100%',
+                            background: 'linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent)',
+                            animation: 'shimmer 3s infinite',
+                            pointerEvents: 'none'
+                        }} />
+                        
+                        {/* Gradient overlay */}
+                        <div style={{
+                            position: 'absolute',
+                            inset: 0,
+                            borderRadius: '28px',
+                            background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.12) 0%, transparent 50%, rgba(255, 255, 255, 0.05) 100%)',
+                            opacity: ctaHover ? 1 : 0.6,
+                            transition: 'opacity 300ms ease'
+                        }} />
+                        
+                        {/* Floating particles */}
+                        <div style={{
+                            position: 'absolute',
+                            width: '6px',
+                            height: '6px',
+                            borderRadius: '50%',
+                            background: 'rgba(255, 255, 255, 0.4)',
+                            top: '20%',
+                            left: '15%',
+                            animation: 'float 4s ease-in-out infinite',
+                            opacity: ctaHover ? 1 : 0.3,
+                            transition: 'opacity 300ms ease'
+                        }} />
+                        <div style={{
+                            position: 'absolute',
+                            width: '4px',
+                            height: '4px',
+                            borderRadius: '50%',
+                            background: 'rgba(255, 255, 255, 0.3)',
+                            top: '60%',
+                            left: '25%',
+                            animation: 'float 5s ease-in-out infinite 1s',
+                            opacity: ctaHover ? 1 : 0.3,
+                            transition: 'opacity 300ms ease'
+                        }} />
+                        <div style={{
+                            position: 'absolute',
+                            width: '5px',
+                            height: '5px',
+                            borderRadius: '50%',
+                            background: 'rgba(255, 255, 255, 0.35)',
+                            top: '40%',
+                            right: '20%',
+                            animation: 'float 4.5s ease-in-out infinite 0.5s',
+                            opacity: ctaHover ? 1 : 0.3,
+                            transition: 'opacity 300ms ease'
+                        }} />
+                        
+                        {/* Pulse ring on hover */}
+                        {ctaHover && (
+                            <div style={{
+                                position: 'absolute',
+                                inset: '-2px',
+                                borderRadius: '30px',
+                                border: '2px solid rgba(255, 255, 255, 0.3)',
+                                animation: 'pulse 1.5s ease-out infinite',
+                                pointerEvents: 'none'
+                            }} />
+                        )}
+                        
+                        <span style={{ position: 'relative', zIndex: 1 }}>Analyze Skin</span>
+                        
+                        <svg 
+                            width="22" 
+                            height="22" 
+                            viewBox="0 0 24 24" 
+                            fill="none" 
+                            stroke="currentColor" 
+                            strokeWidth="2.5" 
+                            strokeLinecap="round" 
+                            strokeLinejoin="round"
                             style={{
-                                flex: 1,
-                                border: 'none',
-                                background: 'transparent',
-                                outline: 'none',
-                                fontSize: '0.85rem',
-                                color: 'var(--text-headline)',
-                                fontFamily: 'var(--font-sans)'
-                            }}
-                        />
-                        {/* Send Button - Always visible */}
-                        <div 
-                            onClick={() => {
-                                if (chatInput.trim()) {
-                                    navigate('/chat', { state: { initialMessage: chatInput } });
-                                }
-                            }}
-                            style={{ 
-                                cursor: chatInput.trim() ? 'pointer' : 'not-allowed',
-                                display: 'flex', 
-                                alignItems: 'center', 
-                                justifyContent: 'center',
-                                width: '32px',
-                                height: '32px',
-                                borderRadius: '50%',
-                                background: chatInput.trim() 
-                                    ? 'linear-gradient(135deg, var(--primary-color), var(--primary-light))'
-                                    : 'rgba(200, 200, 200, 0.3)',
-                                transition: 'all 0.2s',
-                                opacity: 1
+                                position: 'relative',
+                                zIndex: 1,
+                                filter: 'drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1))',
+                                transform: ctaHover ? 'translateX(4px)' : 'translateX(0)',
+                                transition: 'transform 300ms ease'
                             }}
                         >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={chatInput.trim() ? 'white' : 'rgba(100, 100, 100, 0.5)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <line x1="22" y1="2" x2="11" y2="13"></line>
-                                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                            </svg>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                            <polyline points="12 5 19 12 12 19"></polyline>
+                        </svg>
+                    </button>
+                    
+                    <style>{`
+                        @keyframes shimmer {
+                            0% { left: -100%; }
+                            50%, 100% { left: 100%; }
+                        }
+                        
+                        @keyframes float {
+                            0%, 100% { transform: translateY(0px) scale(1); }
+                            50% { transform: translateY(-10px) scale(1.1); }
+                        }
+                        
+                        @keyframes pulse {
+                            0% { 
+                                transform: scale(1);
+                                opacity: 0.6;
+                            }
+                            50% {
+                                transform: scale(1.05);
+                                opacity: 0.3;
+                            }
+                            100% { 
+                                transform: scale(1.1);
+                                opacity: 0;
+                            }
+                        }
+                        
+                        @keyframes floatOrb {
+                            0%, 100% { 
+                                transform: translate(0, 0) scale(1);
+                            }
+                            33% { 
+                                transform: translate(30px, -30px) scale(1.1);
+                            }
+                            66% { 
+                                transform: translate(-20px, 20px) scale(0.9);
+                            }
+                        }
+                        
+                        @keyframes twinkle {
+                            0%, 100% { 
+                                opacity: 0.3;
+                                transform: scale(1);
+                            }
+                            50% { 
+                                opacity: 1;
+                                transform: scale(1.5);
+                            }
+                        }
+                    `}</style>
+
+                    {/* Bottom Content */}
+                    <div style={{ width: '100%', maxWidth: '520px', color: 'white', textAlign: 'left' }}>
+                        <p
+                            style={{
+                                margin: 0,
+                                fontSize: 'clamp(2rem, 5.5vw, 2.5rem)',
+                                lineHeight: 1.1,
+                                fontWeight: 600,
+                                letterSpacing: '-0.01em',
+                                fontFamily: '"Bricolage Grotesque", -apple-system, BlinkMacSystemFont, sans-serif',
+                                textTransform: 'none'
+                            }}
+                        >
+                            Cantik.ai<sup style={{ fontSize: '0.4em', verticalAlign: 'super', letterSpacing: '0.05em', fontWeight: 500 }}>TM</sup>
+                        </p>
+                        <p
+                            style={{
+                                margin: '10px 0 0',
+                                fontSize: '1rem',
+                                lineHeight: 1.4,
+                                fontStyle: 'italic',
+                                fontWeight: 400,
+                                letterSpacing: '0.005em',
+                                color: 'rgba(255,255,255,0.95)',
+                                fontFamily: '"DM Sans", -apple-system, BlinkMacSystemFont, sans-serif'
+                            }}
+                        >
+                            Healthy skin starts when every scan works in <strong style={{ fontWeight: 700 }}>sync.</strong>
+                        </p>
+                        <p
+                            style={{
+                                margin: '14px 0 0',
+                                fontSize: '0.86rem',
+                                lineHeight: 1.55,
+                                color: 'rgba(255,255,255,0.94)',
+                                fontWeight: 400,
+                                letterSpacing: '0.01em',
+                                fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, sans-serif',
+                                maxWidth: '480px'
+                            }}
+                        >
+                            Powered by AI Skin Analyzer Technology, a smart system that helps detect skin concerns,
+                            map condition trends, and guide your skincare decisions naturally.
+                        </p>
+                        <div
+                            style={{
+                                marginTop: '14px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                borderRadius: '999px',
+                                border: '1px solid rgba(255,255,255,0.54)',
+                                padding: '6px 14px',
+                                fontSize: '0.76rem',
+                                color: 'rgba(255,255,255,0.95)',
+                                fontWeight: 500,
+                                letterSpacing: '0.01em',
+                                fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, sans-serif'
+                            }}
+                        >
+                            Designed for all skin types and tropical conditions.
                         </div>
                     </div>
-                </div>
-
-                {/* Menu Grid 3x2 - Focused Actions */}
-                <div style={{ marginBottom: '28px' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
-                        {/* Scan Kulit */}
-                        <div 
-                            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', cursor: 'pointer' }} 
-                            onClick={() => navigate('/scan')}
-                        >
-                            <div style={{ 
-                                width: 64, 
-                                height: 64, 
-                                borderRadius: '16px', 
-                                background: 'rgba(255, 255, 255, 0.5)', 
-                                backdropFilter: 'blur(25px)', 
-                                border: '1px solid rgba(255,255,255,0.8)', 
-                                display: 'flex', 
-                                alignItems: 'center', 
-                                justifyContent: 'center', 
-                                boxShadow: '0 4px 12px rgba(157, 90, 118, 0.08)',
-                                transition: 'all 0.2s'
-                            }}
-                            onMouseEnter={(e) => {
-                                e.currentTarget.style.transform = 'translateY(-2px)';
-                                e.currentTarget.style.boxShadow = '0 6px 16px rgba(157, 90, 118, 0.12)';
-                            }}
-                            onMouseLeave={(e) => {
-                                e.currentTarget.style.transform = 'translateY(0)';
-                                e.currentTarget.style.boxShadow = '0 4px 12px rgba(157, 90, 118, 0.08)';
-                            }}>
-                                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--primary-color)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
-                                    <circle cx="12" cy="13" r="4"></circle>
-                                </svg>
-                            </div>
-                            <p style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--text-body)', textAlign: 'center', fontFamily: 'var(--font-sans)' }}>Scan Kulit</p>
-                        </div>
-                        
-                        {/* Edukasi */}
-                        <div 
-                            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', cursor: 'pointer' }} 
-                            onClick={() => navigate('/education')}
-                        >
-                            <div style={{ 
-                                width: 64, 
-                                height: 64, 
-                                borderRadius: '16px', 
-                                background: 'rgba(255, 255, 255, 0.5)', 
-                                backdropFilter: 'blur(25px)', 
-                                border: '1px solid rgba(255,255,255,0.8)', 
-                                display: 'flex', 
-                                alignItems: 'center', 
-                                justifyContent: 'center', 
-                                boxShadow: '0 4px 12px rgba(157, 90, 118, 0.08)',
-                                transition: 'all 0.2s'
-                            }}
-                            onMouseEnter={(e) => {
-                                e.currentTarget.style.transform = 'translateY(-2px)';
-                                e.currentTarget.style.boxShadow = '0 6px 16px rgba(157, 90, 118, 0.12)';
-                            }}
-                            onMouseLeave={(e) => {
-                                e.currentTarget.style.transform = 'translateY(0)';
-                                e.currentTarget.style.boxShadow = '0 4px 12px rgba(157, 90, 118, 0.08)';
-                            }}>
-                                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--primary-color)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
-                                    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
-                                </svg>
-                            </div>
-                            <p style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--text-body)', textAlign: 'center', fontFamily: 'var(--font-sans)' }}>Edukasi</p>
-                        </div>
-                        
-                        {/* Produk */}
-                        <div 
-                            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', cursor: 'pointer' }} 
-                            onClick={() => navigate('/products')}
-                        >
-                            <div style={{ 
-                                width: 64, 
-                                height: 64, 
-                                borderRadius: '16px', 
-                                background: 'rgba(255, 255, 255, 0.5)', 
-                                backdropFilter: 'blur(25px)', 
-                                border: '1px solid rgba(255,255,255,0.8)', 
-                                display: 'flex', 
-                                alignItems: 'center', 
-                                justifyContent: 'center', 
-                                boxShadow: '0 4px 12px rgba(157, 90, 118, 0.08)',
-                                transition: 'all 0.2s'
-                            }}
-                            onMouseEnter={(e) => {
-                                e.currentTarget.style.transform = 'translateY(-2px)';
-                                e.currentTarget.style.boxShadow = '0 6px 16px rgba(157, 90, 118, 0.12)';
-                            }}
-                            onMouseLeave={(e) => {
-                                e.currentTarget.style.transform = 'translateY(0)';
-                                e.currentTarget.style.boxShadow = '0 4px 12px rgba(157, 90, 118, 0.08)';
-                            }}>
-                                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--primary-color)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path>
-                                    <line x1="3" y1="6" x2="21" y2="6"></line>
-                                    <path d="M16 10a4 4 0 0 1-8 0"></path>
-                                </svg>
-                            </div>
-                            <p style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--text-body)', textAlign: 'center', fontFamily: 'var(--font-sans)' }}>Produk</p>
-                        </div>
-                        
-                        {/* Riwayat */}
-                        <div 
-                            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', cursor: 'pointer' }} 
-                            onClick={() => navigate('/history')}
-                        >
-                            <div style={{ 
-                                width: 64, 
-                                height: 64, 
-                                borderRadius: '16px', 
-                                background: 'rgba(255, 255, 255, 0.5)', 
-                                backdropFilter: 'blur(25px)', 
-                                border: '1px solid rgba(255,255,255,0.8)', 
-                                display: 'flex', 
-                                alignItems: 'center', 
-                                justifyContent: 'center', 
-                                boxShadow: '0 4px 12px rgba(157, 90, 118, 0.08)',
-                                transition: 'all 0.2s'
-                            }}
-                            onMouseEnter={(e) => {
-                                e.currentTarget.style.transform = 'translateY(-2px)';
-                                e.currentTarget.style.boxShadow = '0 6px 16px rgba(157, 90, 118, 0.12)';
-                            }}
-                            onMouseLeave={(e) => {
-                                e.currentTarget.style.transform = 'translateY(0)';
-                                e.currentTarget.style.boxShadow = '0 4px 12px rgba(157, 90, 118, 0.08)';
-                            }}>
-                                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--primary-color)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-                                    <line x1="16" y1="2" x2="16" y2="6"></line>
-                                    <line x1="8" y1="2" x2="8" y2="6"></line>
-                                    <line x1="3" y1="10" x2="21" y2="10"></line>
-                                </svg>
-                            </div>
-                            <p style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--text-body)', textAlign: 'center', fontFamily: 'var(--font-sans)' }}>Riwayat</p>
-                        </div>
-                        
-                        {/* Rekomendasi (AI recommendations) */}
-                        <div 
-                            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', cursor: 'pointer' }} 
-                            onClick={() => navigate('/recommendations')}
-                        >
-                            <div style={{ 
-                                width: 64, 
-                                height: 64, 
-                                borderRadius: '16px', 
-                                background: 'rgba(255, 255, 255, 0.5)', 
-                                backdropFilter: 'blur(25px)', 
-                                border: '1px solid rgba(255,255,255,0.8)', 
-                                display: 'flex', 
-                                alignItems: 'center', 
-                                justifyContent: 'center', 
-                                boxShadow: '0 4px 12px rgba(157, 90, 118, 0.08)',
-                                transition: 'all 0.2s'
-                            }}
-                            onMouseEnter={(e) => {
-                                e.currentTarget.style.transform = 'translateY(-2px)';
-                                e.currentTarget.style.boxShadow = '0 6px 16px rgba(157, 90, 118, 0.12)';
-                            }}
-                            onMouseLeave={(e) => {
-                                e.currentTarget.style.transform = 'translateY(0)';
-                                e.currentTarget.style.boxShadow = '0 4px 12px rgba(157, 90, 118, 0.08)';
-                            }}>
-                                <Sparkles size={28} color="var(--primary-color)" />
-                            </div>
-                            <p style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--text-body)', textAlign: 'center', fontFamily: 'var(--font-sans)' }}>Rekomendasi</p>
-                        </div>
-                        
-                        {/* Konsultasi (Doctor consultation) */}
-                        <div 
-                            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', cursor: 'pointer' }} 
-                            onClick={() => navigate('/doctors')}
-                        >
-                            <div style={{ 
-                                width: 64, 
-                                height: 64, 
-                                borderRadius: '16px', 
-                                background: 'rgba(255, 255, 255, 0.5)', 
-                                backdropFilter: 'blur(25px)', 
-                                border: '1px solid rgba(255,255,255,0.8)', 
-                                display: 'flex', 
-                                alignItems: 'center', 
-                                justifyContent: 'center', 
-                                boxShadow: '0 4px 12px rgba(157, 90, 118, 0.08)',
-                                transition: 'all 0.2s'
-                            }}
-                            onMouseEnter={(e) => {
-                                e.currentTarget.style.transform = 'translateY(-2px)';
-                                e.currentTarget.style.boxShadow = '0 6px 16px rgba(157, 90, 118, 0.12)';
-                            }}
-                            onMouseLeave={(e) => {
-                                e.currentTarget.style.transform = 'translateY(0)';
-                                e.currentTarget.style.boxShadow = '0 4px 12px rgba(157, 90, 118, 0.08)';
-                            }}>
-                                <Video size={28} color="var(--primary-color)" />
-                            </div>
-                            <p style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--text-body)', textAlign: 'center', fontFamily: 'var(--font-sans)' }}>Konsultasi</p>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Section Title - Compact */}
-                <div style={{ marginBottom: '16px' }}>
-                    <h3 className="headline" style={{ fontSize: '1.05rem', fontWeight: 600, color: 'var(--text-headline)', fontFamily: 'var(--font-serif)', textAlign: 'left' }}>
-                        Produk Rekomendasi
-                    </h3>
-                </div>
-
-                {/* Products Grid - Compact */}
-                <div className="no-scrollbar" style={{ display: 'flex', gap: '10px', overflowX: 'auto', paddingBottom: '120px' }}>
-                    {productsLoading ? (
-                        <div style={{ width: '100%', textAlign: 'center', padding: '30px 20px', color: 'var(--text-body)', fontFamily: 'var(--font-sans)' }}>
-                            <p>Memuat produk...</p>
-                        </div>
-                    ) : products.length > 0 ? (
-                        products.map((product) => (
-                            <ProductCard 
-                                key={product.slug} 
-                                image={product.image_url}
-                                name={product.name}
-                                brand={product.category.name}
-                                price={null} // No price in Beautylatory API
-                                onClick={() => navigate(`/products/${product.slug}`)}
-                            />
-                        ))
-                    ) : (
-                        <div style={{ width: '100%', textAlign: 'center', padding: '30px 20px', color: 'var(--text-body)', fontFamily: 'var(--font-sans)' }}>
-                            <p>Tidak ada produk untuk kategori ini</p>
-                        </div>
-                    )}
-                </div>
                 </div>
             </div>
-
-            <BottomNav />
         </div>
     );
 };

@@ -53,7 +53,7 @@ cd backend
 npm install
 cp .env.example .env
 # Edit .env dengan konfigurasi database dan API keys
-npm run init-db
+npm run db:init
 npm run dev
 ```
 
@@ -66,20 +66,41 @@ cp .env.example .env
 npm run dev
 ```
 
-### 4. Akses Aplikasi
+### 4. Setup Platform Lain (Opsional)
+```bash
+cd platforms/admin
+npm install
+cp .env.example .env
+npm run dev
+
+cd ../kiosk
+npm install
+cp .env.example .env
+npm run dev
+
+cd ../desktop
+npm install
+cp .env.example .env
+npm run dev
+```
+
+### 5. Akses Aplikasi
 - **PWA**: http://localhost:5173
+- **Admin**: http://localhost:5174
+- **Kiosk**: http://localhost:5175
+- **Desktop**: http://localhost:5176
 - **Backend API**: http://localhost:8000
-- **Admin**: http://localhost:5173/admin (admin/admin123)
 
 ## 🔧 Konfigurasi Environment
 
 ### Backend (.env)
 ```bash
-# Database
-DB_HOST=localhost
+# Database MySQL
+DB_HOST=127.0.0.1
+DB_PORT=3306
 DB_USER=root
 DB_PASSWORD=your_password
-DB_NAME=cantik_ai
+DB_NAME=skin_analyzer_kiosk
 
 # AI APIs
 GEMINI_API_KEY=your_gemini_key
@@ -95,7 +116,8 @@ NODE_ENV=development
 
 ### PWA (.env)
 ```bash
-VITE_API_BASE_URL=http://localhost:8000
+VITE_API_URL=http://localhost:8000
+VITE_BACKEND_URL=http://localhost:8000
 VITE_GEMINI_API_KEY=your_gemini_key
 VITE_GROQ_API_KEY=your_groq_key
 ```
@@ -105,7 +127,7 @@ VITE_GROQ_API_KEY=your_groq_key
 | Platform | URL | Deskripsi |
 |----------|-----|-----------|
 | PWA | http://localhost:5173 | Aplikasi mobile/web utama |
-| Admin | http://localhost:5173/admin | Dashboard admin (embedded) |
+| Admin | http://localhost:5174 | Dashboard admin |
 | Kiosk | http://localhost:5175 | Interface kiosk touchscreen |
 | Desktop | http://localhost:5176 | Website desktop |
 | Backend API | http://localhost:8000 | REST API server |
@@ -122,7 +144,7 @@ VITE_GROQ_API_KEY=your_groq_key
 7. Lihat rekomendasi perawatan
 
 ### Untuk Admin
-1. Buka http://localhost:5173/admin
+1. Buka http://localhost:5174
 2. Login: admin/admin123
 3. Kelola users, analisis, produk, artikel
 4. Monitor sistem dan database

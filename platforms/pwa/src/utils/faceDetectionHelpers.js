@@ -3,14 +3,14 @@
  * Modular utilities for scanner face detection and quality checks
  */
 
-// Quality thresholds - ULTRA LENIENT - Brightness almost always pass
+// Quality thresholds - BALANCED for better detection
 export const THRESHOLDS = {
-    BRIGHTNESS_MIN: 10,  // ULTRA lenient - even very dark OK (was 20)
-    BRIGHTNESS_MAX: 255, // Maximum possible value (was 250)
-    FACE_SIZE_MIN: 0.15, // VERY lenient - even far away OK
-    FACE_SIZE_MAX: 0.95, // VERY lenient - even very close OK
+    BRIGHTNESS_MIN: 40,  // Reasonable minimum (not too dark)
+    BRIGHTNESS_MAX: 220, // Reasonable maximum (not too bright)
+    FACE_SIZE_MIN: 0.20, // Reasonable minimum distance
+    FACE_SIZE_MAX: 0.85, // Reasonable maximum distance
     GLASSES_THRESHOLD: 0.035,
-    FILTER_THRESHOLD: 0.55
+    FILTER_THRESHOLD: 0.50 // Slightly lower for better filter detection
 };
 
 /**
@@ -43,7 +43,7 @@ export const calculateBrightness = (videoElement, width, height) => {
 };
 
 /**
- * Check if face distance is optimal - EXTREMELY LENIENT
+ * Check if face distance is optimal - BALANCED
  */
 export const checkFaceDistance = (landmarks, width, height) => {
     const xs = landmarks.map(l => l.x);
@@ -52,14 +52,14 @@ export const checkFaceDistance = (landmarks, width, height) => {
     const faceHeight = (Math.max(...ys) - Math.min(...ys)) * height;
     const faceArea = (faceWidth * faceHeight) / (width * height);
     
-    // EXTREMELY WIDE RANGE - Almost always pass (15-95% of frame)
+    // Balanced range for good detection (20-85% of frame)
     const isGood = faceArea >= THRESHOLDS.FACE_SIZE_MIN && faceArea <= THRESHOLDS.FACE_SIZE_MAX;
     
     let status = '';
     if (faceArea < THRESHOLDS.FACE_SIZE_MIN) {
         status = 'Lebih Dekat';
     } else if (faceArea > THRESHOLDS.FACE_SIZE_MAX) {
-        status = 'Terlalu Dekat';
+        status = 'Lebih Jauh';
     } else {
         status = 'Sempurna';
     }
@@ -68,25 +68,46 @@ export const checkFaceDistance = (landmarks, width, height) => {
 };
 
 /**
- * Detect if user is wearing glasses - MORE ACCURATE
+ * Detect if user is wearing glasses - IMPROVED ALGORITHM
+ * Uses multiple detection methods for better accuracy
  */
 export const detectGlasses = (landmarks) => {
     try {
-        // Check multiple indicators for glasses
+        // Method 1: Check eye region depth variance (glasses create flat surface)
         const leftEye = landmarks.slice(33, 42);
         const rightEye = landmarks.slice(263, 272);
         
-        // Check depth variance (glasses create depth difference)
-        const eyeVariance = [...leftEye, ...rightEye].reduce((sum, p) => sum + Math.abs(p.z), 0) / 18;
+        // Calculate depth variance for each eye
+        const leftDepths = leftEye.map(p => p.z);
+        const rightDepths = rightEye.map(p => p.z);
         
-        // Check if eyes are too flat (glasses make them flatter)
-        const leftEyeDepth = leftEye.reduce((sum, p) => sum + p.z, 0) / leftEye.length;
-        const rightEyeDepth = rightEye.reduce((sum, p) => sum + p.z, 0) / rightEye.length;
-        const avgEyeDepth = Math.abs((leftEyeDepth + rightEyeDepth) / 2);
+        const leftAvg = leftDepths.reduce((a, b) => a + b, 0) / leftDepths.length;
+        const rightAvg = rightDepths.reduce((a, b) => a + b, 0) / rightDepths.length;
         
-        // Both conditions must be true for glasses detection
-        return eyeVariance > THRESHOLDS.GLASSES_THRESHOLD && avgEyeDepth > 0.015;
+        // Variance from average (glasses make eyes flatter)
+        const leftVariance = leftDepths.reduce((sum, z) => sum + Math.abs(z - leftAvg), 0) / leftDepths.length;
+        const rightVariance = rightDepths.reduce((sum, z) => sum + Math.abs(z - rightAvg), 0) / rightDepths.length;
+        const avgVariance = (leftVariance + rightVariance) / 2;
+        
+        // Method 2: Check if eye landmarks are too flat (low Z values)
+        const avgEyeDepth = Math.abs((leftAvg + rightAvg) / 2);
+        
+        // Method 3: Check temple area (glasses frames near temples)
+        const leftTemple = landmarks[234]; // Left temple area
+        const rightTemple = landmarks[454]; // Right temple area
+        const templeDepth = Math.abs((leftTemple.z + rightTemple.z) / 2);
+        
+        // Glasses detected if:
+        // 1. Eyes are too flat (low variance) OR
+        // 2. Eye depth is shallow AND temple depth is shallow
+        const lowVariance = avgVariance < 0.008; // Flatter than normal
+        const shallowEyes = avgEyeDepth < 0.025; // Eyes not deep enough
+        const shallowTemples = templeDepth < 0.03; // Temples affected
+        
+        // More lenient detection - any strong indicator triggers detection
+        return lowVariance || (shallowEyes && shallowTemples);
     } catch (error) {
+        console.error('Glasses detection error:', error);
         return false;
     }
 };

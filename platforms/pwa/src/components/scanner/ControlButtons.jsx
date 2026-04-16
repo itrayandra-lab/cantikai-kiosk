@@ -1,15 +1,11 @@
-import { RefreshCcw, Upload, RotateCcw } from 'lucide-react';
+import { RefreshCcw } from 'lucide-react';
 
 /**
  * Scanner Control Buttons Component
- * Upload, Capture, and Retake/Flip buttons with soft styling
+ * Only Capture button (Upload and Flip hidden for kiosk mode)
  */
 const ControlButtons = ({ 
-    onUpload, 
     onCapture, 
-    onFlip,
-    onRetake,
-    fileInputRef,
     isCapturing,
     isOptimal,
     faceDetected,
@@ -24,43 +20,10 @@ const ControlButtons = ({
             display: 'flex', 
             justifyContent: 'center', 
             alignItems: 'center', 
-            gap: '24px', 
             zIndex: 10,
             padding: '0 40px'
         }}>
-            {/* Upload Button (Left) */}
-            <button 
-                onClick={() => fileInputRef.current?.click()}
-                style={{ 
-                    width: 56, 
-                    height: 56, 
-                    borderRadius: '50%', 
-                    background: 'rgba(255, 255, 255, 0.95)', 
-                    border: '2px solid rgba(255, 190, 215, 0.5)', 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'center', 
-                    cursor: 'pointer', 
-                    boxShadow: '0 4px 16px rgba(255, 190, 215, 0.3)',
-                    transition: 'transform 0.2s'
-                }}
-                onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.95)'}
-                onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                onTouchStart={(e) => e.currentTarget.style.transform = 'scale(0.95)'}
-                onTouchEnd={(e) => e.currentTarget.style.transform = 'scale(1)'}
-            >
-                <Upload size={22} color="var(--primary-color)" />
-            </button>
-            
-            <input 
-                ref={fileInputRef}
-                type="file" 
-                accept="image/*" 
-                onChange={onUpload}
-                style={{ display: 'none' }}
-            />
-
-            {/* Giant Center Capture Button */}
+            {/* Giant Center Capture Button - ONLY THIS */}
             <button
                 onClick={onCapture}
                 disabled={hasCameraError || isCapturing || !faceDetected}
@@ -97,34 +60,6 @@ const ControlButtons = ({
                         background: 'white',
                         boxShadow: 'inset 0 2px 8px rgba(230, 0, 126, 0.2)'
                     }} />
-                )}
-            </button>
-
-            {/* Retake/Flip Button (Right) */}
-            <button 
-                onClick={isCapturing ? onRetake : onFlip}
-                style={{ 
-                    width: 56, 
-                    height: 56, 
-                    borderRadius: '50%', 
-                    background: 'rgba(255, 255, 255, 0.95)', 
-                    border: '2px solid rgba(255, 190, 215, 0.5)', 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'center', 
-                    cursor: 'pointer', 
-                    boxShadow: '0 4px 16px rgba(255, 190, 215, 0.3)',
-                    transition: 'transform 0.2s'
-                }}
-                onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.95)'}
-                onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                onTouchStart={(e) => e.currentTarget.style.transform = 'scale(0.95)'}
-                onTouchEnd={(e) => e.currentTarget.style.transform = 'scale(1)'}
-            >
-                {isCapturing ? (
-                    <RotateCcw size={22} color="var(--primary-color)" />
-                ) : (
-                    <RefreshCcw size={22} color="var(--primary-color)" />
                 )}
             </button>
         </div>

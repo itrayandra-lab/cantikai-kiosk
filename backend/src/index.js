@@ -2130,6 +2130,9 @@ app.post('/api/v2/analysis/save', async (req, res) => {
             engine,
             processing_time_ms,
             client_session_id,
+            customer_name,
+            customer_whatsapp,
+            customer_email,
             analysis_data, 
             ai_insights 
         } = req.body;
@@ -2233,9 +2236,9 @@ app.post('/api/v2/analysis/save', async (req, res) => {
             INSERT INTO analyses (
                 user_id, image_url, visualization_url, overall_score, skin_type,
                 fitzpatrick_type, predicted_age, analysis_version, engine, processing_time_ms,
-                cv_metrics, vision_analysis, ai_insights, client_session_id, product_recommendations
+                cv_metrics, vision_analysis, ai_insights, client_session_id, customer_name, customer_whatsapp, customer_email, product_recommendations
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `, [
             user_id,
             imagePath || '',
@@ -2251,6 +2254,9 @@ app.post('/api/v2/analysis/save', async (req, res) => {
             safeStringify(visionAnalysis),
             processAnalysisField(ai_insights),
             normalizedSessionId,
+            customer_name || null,
+            customer_whatsapp || null,
+            customer_email || null,
             '[]' // placeholder untuk product_recommendations
         ]);
         savedAnalysisId = result.lastID;
@@ -2381,6 +2387,53 @@ app.get('/api/v2/analysis/history/:userId', async (req, res) => {
         res.json(analyses);
     } catch (error) {
         console.error('Get analyses error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Get analysis by client session ID (for shared links)
+app.get('/api/v2/analysis/session/:sessionId', async (req, res) => {
+    try {
+        const { sessionId } = req.params;
+        console.log('📥 Fetching analysis by session ID:', sessionId);
+        
+        const analysis = await dbGet(
+            'SELECT * FROM analyses WHERE client_session_id = ? AND is_deleted = 0 ORDER BY id DESC LIMIT 1',
+            [sessionId]
+        );
+        
+        if (!analysis) {
+            return res.status(404).json({ error: 'Analysis not found for this session' });
+        }
+        
+        // Parse JSON fields
+        if (analysis.cv_metrics) analysis.cv_metrics = safeParseJSON(analysis.cv_metrics, {});
+        if (analysis.vision_analysis) analysis.vision_analysis = safeParseJSON(analysis.vision_analysis, {});
+        if (analysis.ai_insights) analysis.ai_insights = safeParseJSON(analysis.ai_insights, {});
+        if (analysis.product_recommendations) analysis.product_recommendations = safeParseJSON(analysis.product_recommendations, []);
+        if (analysis.skincare_routine) analysis.skincare_routine = safeParseJSON(analysis.skincare_routine, {});
+        
+        // Convert image paths to base64 for frontend
+        if (analysis.image_url && !analysis.image_url.startsWith('data:')) {
+            try {
+                analysis.image_url = readImageAsBase64(analysis.image_url);
+            } catch (err) {
+                console.warn('⚠️ Could not read image:', analysis.image_url);
+            }
+        }
+        
+        if (analysis.visualization_url && !analysis.visualization_url.startsWith('data:')) {
+            try {
+                analysis.visualization_url = readImageAsBase64(analysis.visualization_url);
+            } catch (err) {
+                console.warn('⚠️ Could not read visualization:', analysis.visualization_url);
+            }
+        }
+        
+        console.log('✅ Analysis found for session:', sessionId);
+        res.json(analysis);
+    } catch (error) {
+        console.error('❌ Get analysis by session error:', error);
         res.status(500).json({ error: error.message });
     }
 });

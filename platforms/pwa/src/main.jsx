@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
+import './kiosk.css'
 import App from './App.jsx'
 
 // Forcefully unregister old aggressive PWA Service Workers to ensure latest UI updates

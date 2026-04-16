@@ -9,6 +9,11 @@ const ProductDetail = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
+    const getProductCategoryName = (source) => {
+        if (typeof source?.category === 'string') return source.category;
+        return source?.category?.name || '';
+    };
+
     useEffect(() => {
         const fetchProduct = async () => {
             try {
@@ -20,7 +25,7 @@ const ProductDetail = () => {
                 }
                 
                 const data = await response.json();
-                setProduct(data.data);
+                setProduct(data?.data || data);
             } catch (err) {
                 setError(err.message);
                 console.error('Error fetching product:', err);
@@ -206,7 +211,7 @@ const ProductDetail = () => {
                         marginBottom: '16px',
                         fontWeight: 600
                     }}>
-                        {product.category.name}
+                        {getProductCategoryName(product)}
                     </div>
                     
                     {/* Product Name */}
@@ -229,7 +234,11 @@ const ProductDetail = () => {
                     {/* Cobain Sekarang Button */}
                     <div style={{ textAlign: 'center', marginTop: '24px' }}>
                         <button
-                            onClick={() => window.open(`https://beautylatory.com/products/${product.slug}`, '_blank')}
+                            onClick={() => {
+                                if (product?.slug) {
+                                    window.open(`https://beautylatory.com/products/${product.slug}`, '_blank');
+                                }
+                            }}
                             style={{
                                 background: 'var(--primary-color)',
                                 color: 'white',
@@ -238,14 +247,16 @@ const ProductDetail = () => {
                                 borderRadius: '30px',
                                 fontSize: '1rem',
                                 fontWeight: 600,
-                                cursor: 'pointer',
+                                cursor: product?.slug ? 'pointer' : 'not-allowed',
                                 fontFamily: 'var(--font-sans)',
                                 transition: 'all 0.2s ease',
                                 marginBottom: '16px'
                             }}
                             onMouseEnter={(e) => {
-                                e.target.style.transform = 'translateY(-2px)';
-                                e.target.style.boxShadow = '0 6px 20px rgba(157, 90, 118, 0.4)';
+                                if (product?.slug) {
+                                    e.target.style.transform = 'translateY(-2px)';
+                                    e.target.style.boxShadow = '0 6px 20px rgba(157, 90, 118, 0.4)';
+                                }
                             }}
                             onMouseLeave={(e) => {
                                 e.target.style.transform = 'translateY(0)';

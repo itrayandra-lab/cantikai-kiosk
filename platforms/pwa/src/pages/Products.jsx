@@ -11,6 +11,19 @@ const Products = () => {
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
 
+    const normalizeProductList = (payload) => {
+        if (Array.isArray(payload)) return payload;
+        if (payload && Array.isArray(payload.data)) return payload.data;
+        return [];
+    };
+
+    const getMeta = (payload) => payload?.meta || null;
+
+    const getProductCategoryName = (product) => {
+        if (typeof product?.category === 'string') return product.category;
+        return product?.category?.name || '';
+    };
+
     const fetchProducts = async (page = 1) => {
         try {
             setLoading(true);
@@ -21,9 +34,12 @@ const Products = () => {
             }
             
             const data = await response.json();
-            setProducts(data.data);
-            setCurrentPage(data.meta.current_page);
-            setTotalPages(data.meta.last_page);
+            const normalizedProducts = normalizeProductList(data);
+            const meta = getMeta(data);
+
+            setProducts(normalizedProducts);
+            setCurrentPage(meta?.current_page || 1);
+            setTotalPages(meta?.last_page || 1);
         } catch (err) {
             setError(err.message);
             console.error('Error fetching products:', err);
@@ -36,8 +52,8 @@ const Products = () => {
         fetchProducts();
     }, []);
 
-    const handleProductClick = (slug) => {
-        navigate(`/products/${slug}`);
+    const handleProductClick = (product) => {
+        navigate(`/products/${product.slug || product.id}`);
     };
 
     const handlePageChange = (page) => {
@@ -131,9 +147,9 @@ const Products = () => {
                     maxWidth: '800px',
                     margin: '0 auto'
                 }}>
-                    {products.map((product) => (
+                    {products.map((product, index) => (
                         <div
-                            key={product.slug}
+                            key={product.id || product.slug || index}
                             style={{
                                 background: 'white',
                                 borderRadius: '16px',
@@ -180,7 +196,7 @@ const Products = () => {
                                     marginBottom: '8px',
                                     fontWeight: 600
                                 }}>
-                                    {product.category.name}
+                                    {getProductCategoryName(product)}
                                 </div>
                                 
                                 <h3 style={{ 
@@ -217,7 +233,7 @@ const Products = () => {
                                     <button
                                         onClick={(e) => {
                                             e.stopPropagation();
-                                            handleProductClick(product.slug);
+                                            handleProductClick(product);
                                         }}
                                         style={{
                                             background: 'transparent',
@@ -246,7 +262,9 @@ const Products = () => {
                                     <button
                                         onClick={(e) => {
                                             e.stopPropagation();
-                                            window.open(`https://beautylatory.com/products/${product.slug}`, '_blank');
+                                            if (product.slug) {
+                                                window.open(`https://beautylatory.com/products/${product.slug}`, '_blank');
+                                            }
                                         }}
                                         style={{
                                             background: 'var(--primary-color)',
@@ -256,14 +274,16 @@ const Products = () => {
                                             borderRadius: '12px',
                                             fontSize: '0.65rem',
                                             fontWeight: 600,
-                                            cursor: 'pointer',
+                                            cursor: product.slug ? 'pointer' : 'not-allowed',
                                             fontFamily: 'var(--font-sans)',
                                             transition: 'all 0.2s ease',
                                             flex: 1
                                         }}
                                         onMouseEnter={(e) => {
-                                            e.target.style.transform = 'translateY(-1px)';
-                                            e.target.style.boxShadow = '0 4px 12px rgba(157, 90, 118, 0.3)';
+                                            if (product.slug) {
+                                                e.target.style.transform = 'translateY(-1px)';
+                                                e.target.style.boxShadow = '0 4px 12px rgba(157, 90, 118, 0.3)';
+                                            }
                                         }}
                                         onMouseLeave={(e) => {
                                             e.target.style.transform = 'translateY(0)';

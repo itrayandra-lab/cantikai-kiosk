@@ -66,7 +66,7 @@ const AnalysesManagement = () => {
     const filteredAnalyses = useMemo(() => {
         const term = search.toLowerCase();
         return analyses.filter((analysis) => {
-            const haystack = `${analysis.username || ''} ${analysis.user_email || ''} ${analysis.skin_type || ''}`.toLowerCase();
+            const haystack = `${analysis.username || ''} ${analysis.user_email || ''} ${analysis.skin_type || ''} ${analysis.customer_name || ''} ${analysis.customer_whatsapp || ''} ${analysis.customer_email || ''}`.toLowerCase();
             return haystack.includes(term);
         });
     }, [analyses, search]);
@@ -115,7 +115,7 @@ const AnalysesManagement = () => {
                 <input
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
-                    placeholder="Cari berdasarkan user/email/skin type"
+                    placeholder="Cari berdasarkan user/email/skin type/customer name/whatsapp"
                     style={{ ...fieldStyle, paddingLeft: '38px' }}
                 />
             </div>
@@ -125,6 +125,7 @@ const AnalysesManagement = () => {
                     <thead>
                         <tr>
                             <th style={{ padding: '12px', textAlign: 'left', fontSize: '0.8rem', color: 'var(--text-body)', borderBottom: '1px solid rgba(157,90,118,0.15)' }}>User</th>
+                            <th style={{ padding: '12px', textAlign: 'left', fontSize: '0.8rem', color: 'var(--text-body)', borderBottom: '1px solid rgba(157,90,118,0.15)' }}>Customer Info</th>
                             <th style={{ padding: '12px', textAlign: 'left', fontSize: '0.8rem', color: 'var(--text-body)', borderBottom: '1px solid rgba(157,90,118,0.15)' }}>Score</th>
                             <th style={{ padding: '12px', textAlign: 'left', fontSize: '0.8rem', color: 'var(--text-body)', borderBottom: '1px solid rgba(157,90,118,0.15)' }}>Skin Type</th>
                             <th style={{ padding: '12px', textAlign: 'left', fontSize: '0.8rem', color: 'var(--text-body)', borderBottom: '1px solid rgba(157,90,118,0.15)' }}>Engine</th>
@@ -142,6 +143,29 @@ const AnalysesManagement = () => {
                                     <div style={{ fontSize: '0.8rem', color: 'var(--text-body)' }}>
                                         {analysis.user_email || '-'}
                                     </div>
+                                </td>
+                                <td style={{ padding: '12px', borderBottom: '1px solid rgba(157,90,118,0.08)' }}>
+                                    {analysis.customer_name || analysis.customer_whatsapp || analysis.customer_email ? (
+                                        <div>
+                                            {analysis.customer_name && (
+                                                <div style={{ color: 'var(--text-headline)', fontWeight: 600, fontSize: '0.9rem' }}>
+                                                    👤 {analysis.customer_name}
+                                                </div>
+                                            )}
+                                            {analysis.customer_whatsapp && (
+                                                <div style={{ fontSize: '0.8rem', color: 'var(--text-body)', marginTop: '2px' }}>
+                                                    📱 {analysis.customer_whatsapp}
+                                                </div>
+                                            )}
+                                            {analysis.customer_email && (
+                                                <div style={{ fontSize: '0.8rem', color: 'var(--text-body)', marginTop: '2px' }}>
+                                                    ✉️ {analysis.customer_email}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <span style={{ color: 'var(--text-body)', fontSize: '0.8rem' }}>-</span>
+                                    )}
                                 </td>
                                 <td style={{ padding: '12px', borderBottom: '1px solid rgba(157,90,118,0.08)' }}>
                                     <span style={{ color: getScoreColor(Number(analysis.overall_score || 0)), fontWeight: 700 }}>

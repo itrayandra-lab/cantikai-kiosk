@@ -2,19 +2,13 @@
 
 
 import { Fragment, useEffect, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { X, MoveUpRight, Info, Sparkles, ScanFace, Heart, Image as ImageIcon } from 'lucide-react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { X, MoveUpRight, Info, Sparkles, ScanFace, Heart } from 'lucide-react';
 import { analyzeSkinWithAI } from '../services/aiAnalysisService';
-import { generateSkinAnalyzerImage } from '../services/skinAnalyzerVisualization';
 import apiService from '../services/api';
-import BottomNav from '../components/BottomNav';
 import AnalysisModeModal from '../components/AnalysisModeModal';
 import ErrorToast from '../components/ErrorToast';
-import LoginPrompt from '../components/LoginPrompt';
-import LockedContent from '../components/LockedContent';
 import metricExplanations from '../data/metricExplanations';
-import { isAuthenticated, isGuestSession } from '../utils/auth';
-import { getTokenInfo } from '../utils/tokenSystem';
 
 // SPACING CONSTANTS - COMPACT & MINIMALIST
 const SPACING = {
@@ -37,6 +31,7 @@ const TYPOGRAPHY = {
 const AnalysisResult = () => {
     const { state } = useLocation();
     const navigate = useNavigate();
+    const { sessionId: urlSessionId } = useParams(); // Get sessionId from URL if shared link
     const [loading, setLoading] = useState(true);
     const [progress, setProgress] = useState(0);
     const [loadingStage, setLoadingStage] = useState('');
@@ -47,25 +42,21 @@ const AnalysisResult = () => {
     const [resultData, setResultData] = useState(null);
     const [aiInsights, setAiInsights] = useState(null);
     const [analysisEngine, setAnalysisEngine] = useState('');
-    const [saving, setSaving] = useState(false);
     const [selectedMode, setSelectedMode] = useState(null);
     const [sessionId, setSessionId] = useState(null);
     const [error, setError] = useState(null);
     const [visualizationImage, setVisualizationImage] = useState(null);
     const [showOriginal, setShowOriginal] = useState(false);
-    const [showLoginPrompt, setShowLoginPrompt] = useState(false);
-    const [isGuest, setIsGuest] = useState(true);
-    const [tokenInfo, setTokenInfo] = useState(null);
+    
+    // WhatsApp sharing states
+    const [userName, setUserName] = useState('');
+    const [userWhatsApp, setUserWhatsApp] = useState('');
+    const [userEmail, setUserEmail] = useState('');
+    const [showPreview, setShowPreview] = useState(false);
+    const [sending, setSending] = useState(false);
 
-    // Check auth status on mount
-    useEffect(() => {
-        const guest = !isAuthenticated() || isGuestSession();
-        setIsGuest(guest);
-        
-        // Get token info
-        const info = getTokenInfo('analysis', guest);
-        setTokenInfo(info);
-    }, []);
+    // Check auth status on mount - REMOVED FOR KIOSK MODE (no authentication required)
+    // Auto-save happens automatically in useEffect, no manual save needed
 
     useEffect(() => {
         if (!resultData) return;
@@ -130,18 +121,30 @@ const AnalysisResult = () => {
         });
     };
 
-    // Auto-save analysis to IndexedDB (silent)
-    const autoSaveAnalysis = async (analysisData, currentSessionId) => {
+    // Auto-save analysis to Database (CRITICAL for shared links!)
+    const autoSaveAnalysis = async (analysisData, currentSessionId, imageBase64, vizImage, customerName = null, customerWhatsApp = null, customerEmail = null) => {
         try {
-            console.log('💾 Auto-save: Preparing data...');
+            console.log('💾 ========== AUTO-SAVE START ==========');
+            console.log('💾 Session ID:', currentSessionId);
+            console.log('💾 Customer Name:', customerName);
+            console.log('💾 Customer WhatsApp:', customerWhatsApp);
+            console.log('💾 Customer Email:', customerEmail);
+            console.log('💾 Has Image:', !!imageBase64);
+            console.log('💾 Has Visualization:', !!vizImage);
+            console.log('💾 Analysis Data Keys:', Object.keys(analysisData || {}));
+            
+            // CRITICAL: Validate session ID
+            if (!currentSessionId) {
+                throw new Error('Session ID is required for auto-save');
+            }
             
             // Get or create user ID
             let userId = localStorage.getItem('cantik_user_id');
             if (!userId) {
-                console.log('💾 Auto-save: Creating user...');
+                console.log('💾 Creating new user...');
                 const user = await apiService.createUser({
-                    email: `user_${Date.now()}@cantik.ai`,
-                    username: `User${Date.now()}`
+                    email: `kiosk_${Date.now()}@cantik.ai`,
+                    username: `Kiosk_${Date.now()}`
                 });
                 userId = user.id;
                 localStorage.setItem('cantik_user_id', userId);
@@ -149,52 +152,60 @@ const AnalysisResult = () => {
             }
 
             // Prepare complete analysis data for storage
-                const dataToSave = {
-                    user_id: parseInt(userId),
-                    client_session_id: currentSessionId || null,
-                    image_base64: state?.imageBase64 || '',
-                    visualization_base64: visualizationImage || '',
-                    overall_score: analysisData.overall_score || 0,
+            const dataToSave = {
+                user_id: parseInt(userId),
+                client_session_id: currentSessionId,
+                customer_name: customerName,
+                customer_whatsapp: customerWhatsApp,
+                customer_email: customerEmail,
+                image_base64: imageBase64 || '',
+                visualization_base64: vizImage || '',
+                overall_score: analysisData.overall_score || 0,
                 skin_type: analysisData.skin_type || 'Unknown',
                 fitzpatrick_type: analysisData.fitzpatrick_type || 'III',
                 predicted_age: analysisData.predicted_age || 
                               analysisData.age_prediction?.predicted_age || 
                               25,
-                analysis_version: analysisData.analysis_version || '6.0',
+                analysis_version: analysisData.analysis_version || '7.0',
                 engine: analysisData.engine || 'AI Analysis',
                 processing_time_ms: Math.round(parseFloat(analysisData.processing_time || 0) * 1000),
-                analysis_data: JSON.stringify(analysisData || {}),
-                ai_insights: JSON.stringify(analysisData.ai_insights || analysisData.ai_report || {})
+                analysis_data: analysisData,
+                ai_insights: analysisData.ai_insights || analysisData.ai_report || {}
             };
 
-            console.log('💾 Saving to database with complete data...');
-            console.log('📊 Data to save:', {
+            console.log('💾 Sending to backend:', {
                 user_id: dataToSave.user_id,
+                client_session_id: dataToSave.client_session_id,
+                customer_name: dataToSave.customer_name,
+                customer_whatsapp: dataToSave.customer_whatsapp,
+                customer_email: dataToSave.customer_email,
                 overall_score: dataToSave.overall_score,
                 skin_type: dataToSave.skin_type,
-                fitzpatrick_type: dataToSave.fitzpatrick_type,
-                predicted_age: dataToSave.predicted_age,
-                analysis_version: dataToSave.analysis_version,
-                engine: dataToSave.engine,
-                processing_time_ms: dataToSave.processing_time_ms,
                 has_image: !!dataToSave.image_base64,
-                has_visualization: !!dataToSave.visualization_base64
+                has_visualization: !!dataToSave.visualization_base64,
+                image_size: dataToSave.image_base64?.length || 0,
+                viz_size: dataToSave.visualization_base64?.length || 0
             });
             
             const savedAnalysis = await apiService.saveAnalysis(dataToSave);
             
-            console.log('✅ Auto-save complete:', savedAnalysis.id);
+            console.log('✅ ========== AUTO-SAVE SUCCESS ==========');
+            console.log('✅ Saved Analysis ID:', savedAnalysis?.id);
+            console.log('✅ Session ID in DB:', currentSessionId);
+            console.log('✅ Customer:', customerName, customerWhatsApp);
+            console.log('✅ Shared Link:', `${window.location.origin}/analysis/${currentSessionId}`);
+            console.log('✅ ========================================');
             
-            // Store in session for quick access
-            const sessionKey = `analysis_session_${sessionId}`;
-            sessionStorage.setItem(sessionKey, JSON.stringify({
-                analysisId: savedAnalysis.id,
-                timestamp: Date.now()
-            }));
+            return savedAnalysis;
 
         } catch (error) {
-            console.error('❌ Auto-save failed:', error);
-            // Don't show error to user, just log it
+            console.error('❌ ========== AUTO-SAVE FAILED ==========');
+            console.error('❌ Error:', error);
+            console.error('❌ Error Message:', error.message);
+            console.error('❌ Session ID:', currentSessionId);
+            console.error('❌ This will cause 404 error on shared links!');
+            console.error('❌ ========================================');
+            throw error;
         }
     };
 
@@ -203,70 +214,72 @@ const AnalysisResult = () => {
         setSelectedMode(mode);
     };
 
-    // Manual save function (called by user action)
-    const saveAnalysisToProfile = async () => {
-        if (!resultData || saving) return;
-        
-        setSaving(true);
-        try {
-            // Save to localStorage
-            localStorage.setItem('lastAnalysis', Date.now().toString());
-            localStorage.setItem('lastSkinScore', resultData.overall_score.toString());
-            
-            // Get or create user ID
-            let userId = localStorage.getItem('cantik_user_id');
-            if (!userId) {
-                const user = await apiService.createUser({
-                    email: `user_${Date.now()}@cantik.ai`,
-                    username: `user_${Date.now()}`,
-                    full_name: 'Guest User'
-                });
-                userId = user.id;
-                localStorage.setItem('cantik_user_id', userId);
-                console.log('✅ Created temporary user:', userId);
-            }
-            
-            // Save analysis to database with complete data
-            if (userId) {
-                const dataToSave = {
-                    user_id: parseInt(userId),
-                    client_session_id: sessionId || null,
-                    image_base64: state?.imageBase64 || '',
-                    visualization_base64: visualizationImage || '',
-                    overall_score: resultData.overall_score || 0,
-                    skin_type: resultData.skin_type || 'Unknown',
-                    fitzpatrick_type: resultData.fitzpatrick_type || 'III',
-                    predicted_age: resultData.predicted_age || 
-                                  resultData.age_prediction?.predicted_age || 
-                                  25,
-                    analysis_version: resultData.analysis_version || '6.0',
-                    engine: resultData.engine || analysisEngine || 'AI Analysis',
-                    processing_time_ms: Math.round(parseFloat(resultData.processing_time || 0) * 1000),
-                    analysis_data: resultData,
-                    ai_insights: aiInsights || null
-                };
-                
-                const savedAnalysis = await apiService.saveAnalysis(dataToSave);
-                console.log('✅ Analysis saved to database:', savedAnalysis.id);
-                localStorage.setItem('last_analysis_id', savedAnalysis.id);
-                alert('✓ Laporan berhasil disimpan ke profil Anda!');
-            } else {
-                alert('✓ Laporan disimpan secara lokal!');
-            }
-            
-            // Clear session after save
-            clearSession();
-            
-            setTimeout(() => navigate('/'), 500);
-        } catch (error) {
-            console.error('Error saving analysis:', error);
-            alert('Gagal menyimpan laporan. Coba lagi nanti.');
-        } finally {
-            setSaving(false);
-        }
-    };
+    // Manual save function - REMOVED FOR KIOSK MODE
+    // Auto-save happens automatically, no manual save button needed
 
     useEffect(() => {
+        // If URL has sessionId parameter (shared link), load from database
+        if (urlSessionId) {
+            const loadFromDatabase = async () => {
+                try {
+                    console.log('📥 Loading analysis from shared link:', urlSessionId);
+                    setLoadingStage('Memuat hasil analisis...');
+                    setProgress(50);
+                    
+                    // Load from database using session ID
+                    const analysis = await apiService.getAnalysisBySessionId(urlSessionId);
+                    
+                    if (!analysis) {
+                        throw new Error('Analysis not found');
+                    }
+                    
+                    console.log('✅ Analysis loaded from database:', analysis);
+                    
+                    // Parse the stored data
+                    const analysisData = analysis.vision_analysis || {};
+                    const aiInsightsData = analysis.ai_insights || {};
+                    
+                    // Reconstruct resultData from database fields
+                    const reconstructedData = {
+                        overall_score: analysis.overall_score,
+                        skin_type: analysis.skin_type,
+                        fitzpatrick_type: analysis.fitzpatrick_type,
+                        predicted_age: analysis.predicted_age,
+                        analysis_version: analysis.analysis_version,
+                        engine: analysis.engine,
+                        processing_time: (analysis.processing_time_ms / 1000).toFixed(2),
+                        ...analysisData,
+                        ai_insights: aiInsightsData,
+                        ai_report: aiInsightsData,
+                        product_recommendations: analysis.product_recommendations || []
+                    };
+                    
+                    setResultData(reconstructedData);
+                    setAiInsights(aiInsightsData);
+                    setAnalysisEngine(analysis.engine || 'AI Analysis');
+                    setVisualizationImage(analysis.visualization_url || null);
+                    setSessionId(urlSessionId);
+                    
+                    // Show all sections
+                    setProgress(100);
+                    setShowOverallScore(true);
+                    setShowVisualization(true);
+                    setShowMetrics(true);
+                    setShowProducts(true);
+                    setLoading(false);
+                    
+                    console.log('✅ Loaded analysis from database successfully');
+                } catch (error) {
+                    console.error('❌ Failed to load shared analysis:', error);
+                    setError('Gagal memuat hasil analisis. Link mungkin sudah kadaluarsa atau tidak valid.');
+                    setLoading(false);
+                }
+            };
+            
+            loadFromDatabase();
+            return;
+        }
+        
         // Allow loading from history with imageUrl OR imageBase64
         if (!state?.imageBase64 && !state?.imageUrl && !state?.fromHistory) {
             navigate('/');
@@ -279,9 +292,22 @@ const AnalysisResult = () => {
 
         // Check if coming from history (already has data)
         if (state?.fromHistory) {
+            console.log('📊 Loading from history...');
+            console.log('📸 Has image:', !!state.imageBase64);
+            console.log('🔬 Has visualization:', !!state.visualizationImage);
+            console.log('📊 Session ID:', state.sessionId);
+            
             setResultData(state.resultData);
             setAiInsights(state.aiInsights);
             setAnalysisEngine(state.analysisEngine);
+            setSessionId(state.sessionId || currentSessionId); // Set session ID for sharing
+            
+            // Load visualization if available
+            if (state.visualizationImage) {
+                setVisualizationImage(state.visualizationImage);
+                setShowVisualization(true);
+                console.log('✅ Visualization loaded from history');
+            }
             
             // Show all sections immediately for historical data
             setProgress(100);
@@ -377,6 +403,12 @@ const AnalysisResult = () => {
                 const analysisData = analysisResult.data;
                 setProgress(60);
                 
+                // Cache image for later use (WhatsApp sharing)
+                if (state.imageBase64) {
+                    localStorage.setItem('cantik_last_scan_image', state.imageBase64);
+                    console.log('💾 Cached scan image for later use');
+                }
+                
                 // Stage 3: Show Overall Score IMMEDIATELY (60-70%)
                 setLoadingStage('Menampilkan hasil...');
                 setResultData(analysisData);
@@ -386,17 +418,9 @@ const AnalysisResult = () => {
                 setProgress(70);
                 setLoading(false); // Stop loading, show results!
                 
-                // Stage 3.5: Generate Visualization Image (70-75%)
-                setLoadingStage('Generating visualization...');
-                try {
-                    const vizImage = await generateSkinAnalyzerImage(state.imageBase64, analysisData);
-                    setVisualizationImage(vizImage);
-                    setShowVisualization(true);
-                    console.log('✅ Visualization image generated');
-                } catch (vizError) {
-                    console.warn('⚠️ Visualization generation failed:', vizError);
-                    // Continue without visualization
-                }
+                // Skip visualization generation - show original image only
+                setVisualizationImage(state.imageBase64); // Use original image
+                setShowVisualization(true);
                 setProgress(75);
                 
                 // Stage 4: Show 15 Analysis Modes (75-85%)
@@ -422,14 +446,38 @@ const AnalysisResult = () => {
                 sessionStorage.removeItem(runLockKey);
                 console.log('💾 Analysis saved to session:', currentSessionId);
                 
-                // Auto-save to IndexedDB
+                // Auto-save to Database (CRITICAL for shared links!)
                 try {
-                    console.log('💾 Auto-saving analysis to IndexedDB...');
-                    await autoSaveAnalysis(analysisData, currentSessionId);
-                    console.log('✅ Auto-save complete');
+                    console.log('💾 ========== AUTO-SAVE START ==========');
+                    console.log('💾 Session ID:', currentSessionId);
+                    console.log('💾 Analysis Data Keys:', Object.keys(analysisData));
+                    console.log('💾 Overall Score:', analysisData.overall_score);
+                    console.log('💾 Skin Type:', analysisData.skin_type);
+                    // Pass image to auto-save (no visualization needed)
+                    const savedAnalysis = await autoSaveAnalysis(
+                        analysisData, 
+                        currentSessionId,
+                        state.imageBase64,
+                        null, // No visualization image
+                        null, // Customer name (not available yet)
+                        null, // Customer WhatsApp (not available yet)
+                        null  // Customer email (not available yet)
+                    );
+                    
+                    console.log('✅ ========== AUTO-SAVE SUCCESS ==========');
+                    console.log('✅ Saved Analysis ID:', savedAnalysis?.id);
+                    console.log('✅ Session ID in DB:', currentSessionId);
+                    console.log('✅ ========================================');
                 } catch (autoSaveError) {
-                    console.warn('⚠️ Auto-save failed (silent):', autoSaveError);
-                    // Silent fail - user can still manually save
+                    console.error('❌ ========== AUTO-SAVE FAILED ==========');
+                    console.error('❌ Error:', autoSaveError);
+                    console.error('❌ Error Message:', autoSaveError.message);
+                    console.error('❌ Error Stack:', autoSaveError.stack);
+                    console.error('❌ This will cause 404 error on shared links!');
+                    console.error('❌ ========================================');
+                    
+                    // Show warning to user
+                    alert(`⚠️ PERINGATAN: Data tidak tersimpan ke database!\n\nError: ${autoSaveError.message}\n\nLink sharing tidak akan berfungsi. Silakan coba scan ulang.`);
                 }
                 
                 setProgress(100);
@@ -515,8 +563,6 @@ const AnalysisResult = () => {
         }
     };
 
-    const DetailedContentWrapper = isGuest ? LockedContent : Fragment;
-
     return (
         <div className="app-container" style={{ position: 'relative', overflow: 'hidden' }}>
 
@@ -573,146 +619,8 @@ const AnalysisResult = () => {
                 </div>
             )}
 
-            {/* Fixed Floating Progress Phase - ALWAYS visible (compact mode after loading) */}
-            {progress > 0 && (
-                <div style={{
-                    position: 'fixed',
-                    top: 0,
-                    left: '50%',
-                    transform: 'translateX(-50%)',
-                    width: '100%',
-                    maxWidth: '600px',
-                    zIndex: 1000,
-                    background: loading ? 'linear-gradient(135deg, rgba(250, 246, 248, 0.98), rgba(255, 255, 255, 0.98))' : 'linear-gradient(135deg, rgba(250, 246, 248, 0.95), rgba(255, 255, 255, 0.95))',
-                    backdropFilter: 'blur(20px)',
-                    padding: loading ? '20px 24px' : '12px 24px',
-                    boxShadow: loading ? '0 4px 30px rgba(230, 0, 126, 0.15)' : '0 2px 15px rgba(230, 0, 126, 0.1)',
-                    borderBottom: '2px solid rgba(230, 0, 126, 0.1)',
-                    transition: 'all 0.3s ease'
-                }}>
-                    {/* Phase Indicators */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: loading ? '16px' : '0', maxWidth: '800px', marginLeft: 'auto', marginRight: 'auto' }}>
-                        {[
-                            { name: 'Kesehatan Kulit', threshold: 50, Icon: Heart },
-                            { name: 'Analisis Detail', threshold: 75, Icon: ScanFace },
-                            { name: 'AI Dermatology', threshold: 100, Icon: Sparkles }
-                        ].map((phase, idx) => {
-                            const isActive = progress >= phase.threshold;
-                            const isCurrent = progress < phase.threshold && (idx === 0 || progress >= [50, 75][idx - 1]);
-                            const PhaseIcon = phase.Icon;
-                            
-                            return (
-                                <div key={idx} style={{ 
-                                    flex: 1, 
-                                    display: 'flex', 
-                                    flexDirection: 'column', 
-                                    alignItems: 'center',
-                                    position: 'relative'
-                                }}>
-                                    {/* Connector Line */}
-                                    {idx > 0 && (
-                                        <div style={{
-                                            position: 'absolute',
-                                            top: loading ? '20px' : '14px',
-                                            right: '50%',
-                                            width: '100%',
-                                            height: loading ? '3px' : '2px',
-                                            background: isActive ? 'var(--primary-color)' : 'rgba(157, 143, 166, 0.2)',
-                                            transition: 'background 0.5s ease',
-                                            zIndex: 0
-                                        }} />
-                                    )}
-                                    
-                                    {/* Phase Circle */}
-                                    <div style={{
-                                        width: loading ? '40px' : '28px',
-                                        height: loading ? '40px' : '28px',
-                                        borderRadius: '50%',
-                                        background: isActive ? 'var(--primary-color)' : isCurrent ? 'rgba(230, 0, 126, 0.15)' : 'rgba(157, 143, 166, 0.08)',
-                                        border: `${loading ? 3 : 2}px solid ${isActive ? 'var(--primary-color)' : isCurrent ? 'var(--primary-color)' : 'rgba(157, 143, 166, 0.3)'}`,
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        transition: 'all 0.5s ease',
-                                        position: 'relative',
-                                        zIndex: 1,
-                                        animation: (loading && isCurrent) ? 'pulse 2s infinite' : 'none',
-                                        boxShadow: isActive ? '0 4px 12px rgba(230, 0, 126, 0.3)' : 'none'
-                                    }}>
-                                        <PhaseIcon 
-                                            size={loading ? 20 : 14} 
-                                            color={isActive ? 'white' : isCurrent ? 'var(--primary-color)' : 'var(--text-body)'} 
-                                            strokeWidth={2.5}
-                                        />
-                                    </div>
-                                    
-                                    {/* Phase Name - Only show during loading */}
-                                    {loading && (
-                                        <span style={{
-                                            fontSize: '0.7rem',
-                                            fontWeight: isActive || isCurrent ? 700 : 500,
-                                            color: isActive ? 'var(--primary-color)' : isCurrent ? 'var(--text-headline)' : 'var(--text-body)',
-                                            marginTop: '8px',
-                                            textAlign: 'center',
-                                            fontFamily: 'var(--font-sans)',
-                                            transition: 'all 0.3s ease',
-                                            whiteSpace: 'nowrap'
-                                        }}>
-                                            {phase.name}
-                                        </span>
-                                    )}
-                                </div>
-                            );
-                        })}
-                    </div>
-                    
-                    {/* Progress Bar - Only show during loading */}
-                    {loading && (
-                        <div style={{ maxWidth: '800px', margin: '0 auto' }}>
-                            <div style={{ 
-                                height: '8px', 
-                                background: 'rgba(230, 0, 126, 0.1)', 
-                                borderRadius: '10px',
-                                overflow: 'hidden',
-                                position: 'relative'
-                            }}>
-                                <div style={{
-                                    height: '100%',
-                                    width: `${progress}%`,
-                                    background: 'linear-gradient(90deg, var(--primary-color), var(--primary-light))',
-                                    transition: 'width 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
-                                    boxShadow: '0 0 15px rgba(230, 0, 126, 0.4)',
-                                    position: 'relative'
-                                }}>
-                                    {/* Shimmer effect */}
-                                    <div style={{
-                                        position: 'absolute',
-                                        top: 0,
-                                        left: 0,
-                                        right: 0,
-                                        bottom: 0,
-                                        background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent)',
-                                        animation: 'shimmer 2s infinite'
-                                    }} />
-                                </div>
-                            </div>
-                            
-                            {/* Progress Text */}
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px' }}>
-                                <span style={{ fontSize: '0.8rem', color: 'var(--text-body)', fontWeight: 500, fontFamily: 'var(--font-sans)' }}>
-                                    {loadingStage}
-                                </span>
-                                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--primary-color)', fontFamily: 'var(--font-display)' }}>
-                                    {progress}%
-                                </span>
-                            </div>
-                        </div>
-                    )}
-                </div>
-            )}
-
-            {/* Spacer when progress bar is showing */}
-            {progress > 0 && <div style={{ height: loading ? '140px' : '60px' }} />}
+            {/* Fixed Floating Progress Phase - HIDDEN FOR KIOSK MODE */}
+            {/* Progress bar removed for cleaner kiosk experience */}
 
             {/* Intense Background Face Blur */}
             {(state?.imageBase64 || state?.imageUrl) && (
@@ -739,8 +647,12 @@ const AnalysisResult = () => {
                 {/* Header */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '36px' }}>
                     <div>
-                        <p style={{ color: 'var(--text-headline)', marginBottom: '0px', fontWeight: 500, fontSize: '1.2rem', opacity: 0.9 }}>Laporan</p>
-                        <h1 className="headline" style={{ fontSize: 'clamp(1.8rem, 8vw, 2.4rem)', lineHeight: 1.05 }}>Kulit Anda</h1>
+                        <p style={{ color: 'var(--text-headline)', marginBottom: '0px', fontWeight: 500, fontSize: '1.2rem', opacity: 0.9 }}>
+                            {state?.fromHistory ? 'Riwayat' : 'Laporan'}
+                        </p>
+                        <h1 className="headline" style={{ fontSize: 'clamp(1.8rem, 8vw, 2.4rem)', lineHeight: 1.05 }}>
+                            {state?.fromHistory ? 'Laporan Kulit' : 'Kulit Anda'}
+                        </h1>
                     </div>
                     <button
                         onClick={() => navigate('/')}
@@ -752,41 +664,7 @@ const AnalysisResult = () => {
 
                 {/* Info Badge - Hidden (Backend Implementation Detail) */}
 
-                {/* Guest Token Banner */}
-                {isGuest && tokenInfo && !loading && (
-                    <div style={{
-                        margin: '0 0 20px',
-                        background: 'linear-gradient(135deg, #fff3cd, #ffeaa7)',
-                        borderRadius: '16px',
-                        padding: '12px 14px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '10px',
-                        border: '1px solid rgba(255, 193, 7, 0.35)',
-                        boxShadow: '0 4px 14px rgba(0, 0, 0, 0.06)'
-                    }}>
-                        <span style={{ fontSize: '1.1rem' }}>🎫</span>
-                        <p style={{ margin: 0, flex: 1, fontSize: '0.85rem', color: '#5f4a00', fontFamily: 'var(--font-sans)' }}>
-                            <strong>Token Analisis:</strong> {tokenInfo.message}
-                        </p>
-                        <button
-                            onClick={() => setShowLoginPrompt(true)}
-                            style={{
-                                border: 'none',
-                                borderRadius: '10px',
-                                padding: '8px 12px',
-                                background: 'var(--primary-color)',
-                                color: 'white',
-                                fontSize: '0.8rem',
-                                fontWeight: 600,
-                                cursor: 'pointer',
-                                fontFamily: 'var(--font-sans)'
-                            }}
-                        >
-                            Upgrade
-                        </button>
-                    </div>
-                )}
+                {/* Guest Token Banner - REMOVED FOR KIOSK MODE */}
                 
                 {loading ? (
                     <div className="card-glass" style={{ padding: '40px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '24px' }}>
@@ -885,8 +763,8 @@ const AnalysisResult = () => {
                                         📊 Ringkasan Hasil
                                     </h3>
                                     
-                                    {/* Data-Driven Summary - COMPACT */}
-                                    <p style={{ fontSize: TYPOGRAPHY.small, color: 'var(--text-body)', lineHeight: 1.5, marginBottom: `${SPACING.element}px`, fontFamily: 'var(--font-sans)' }}>
+                                    {/* Combined Summary: Data-Driven + AI Insights */}
+                                    <p style={{ fontSize: TYPOGRAPHY.small, color: 'var(--text-body)', lineHeight: 1.6, marginBottom: `${SPACING.element}px`, fontFamily: 'var(--font-sans)' }}>
                                         {(() => {
                                             const score = resultData?.overall_score || 0;
                                             const acneCount = resultData?.acne?.acne_count || 0;
@@ -897,6 +775,7 @@ const AnalysisResult = () => {
                                             let condition = score >= 80 ? "sangat baik" : score >= 60 ? "baik" : score >= 40 ? "cukup baik" : "memerlukan perhatian";
                                             let emoji = score >= 80 ? "✨" : score >= 60 ? "😊" : score >= 40 ? "🤔" : "⚠️";
                                             
+                                            // Start with data-driven summary
                                             let summary = `${emoji} Kulit Anda dalam kondisi ${condition} dengan skor ${score}/100. `;
                                             
                                             const issues = [];
@@ -909,8 +788,14 @@ const AnalysisResult = () => {
                                             }
                                             
                                             if (priorityConcerns.length > 0) {
-                                                const topConcern = priorityConcerns[0];
-                                                summary += `Prioritas: ${topConcern.concern} di ${topConcern.zones?.join(', ') || 'wajah'}.`;
+                                                const concerns = priorityConcerns.map(c => c.concern).join(', ');
+                                                const zones = priorityConcerns[0]?.zones?.join(', ') || 'wajah';
+                                                summary += `Prioritas: ${concerns} di ${zones}. `;
+                                            }
+                                            
+                                            // Add AI summary if available
+                                            if (aiInsights?.summary) {
+                                                summary += '\n\n' + aiInsights.summary;
                                             }
                                             
                                             return summary;
@@ -923,10 +808,6 @@ const AnalysisResult = () => {
                                             <p style={{ fontSize: TYPOGRAPHY.tiny, color: 'var(--text-body)', marginBottom: '2px' }}>Jenis Kulit</p>
                                             <p style={{ fontSize: TYPOGRAPHY.small, fontWeight: 600, color: 'var(--text-headline)', margin: 0 }}>{resultData?.skin_type || "Normal"}</p>
                                         </div>
-                                        {/* <div style={{ background: 'rgba(255,255,255,0.6)', borderRadius: '10px', padding: '8px 12px', flex: '1 1 auto', minWidth: '120px' }}>
-                                            <p style={{ fontSize: TYPOGRAPHY.tiny, color: 'var(--text-body)', marginBottom: '2px' }}>Jenis Kulit</p>
-                                            <p style={{ fontSize: TYPOGRAPHY.small, fontWeight: 600, color: 'var(--text-headline)', margin: 0 }}>{resultData?.skin_type || 'Normal'}</p>
-                                        </div> */}
                                     </div>
                                     
                                     {/* Priority Concerns - COMPACT */}
@@ -936,7 +817,7 @@ const AnalysisResult = () => {
                                                 🎯 Prioritas:
                                             </p>
                                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                                                {resultData.priority_concerns.slice(0, 3).map((concern, idx) => (
+                                                {resultData.priority_concerns.map((concern, idx) => (
                                                     <span key={idx} style={{ fontSize: TYPOGRAPHY.tiny, color: 'var(--text-body)', background: 'rgba(255,255,255,0.5)', padding: '4px 8px', borderRadius: '6px' }}>
                                                         {concern.concern} ({concern.severity})
                                                     </span>
@@ -948,48 +829,21 @@ const AnalysisResult = () => {
                             </div>
                         )}
 
-                        {/* Detailed content: locked for guest, unlocked for logged in users */}
-                        <DetailedContentWrapper
-                            {...(isGuest ? {
-                                onUnlock: () => setShowLoginPrompt(true),
-                                title: 'Analisis Lengkap Terkunci'
-                            } : {})}
-                        >
-                            <>
-                                {/* Stage 2: Skin Analyzer Visualization */}
-                                {showVisualization && visualizationImage && (
-                                    <div style={{ animation: 'etherealFade 0.6s ease', marginBottom: `${SPACING.section}px` }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: `${SPACING.element}px` }}>
-                                            <h3 style={{ fontSize: TYPOGRAPHY.h3, fontWeight: 600, color: 'var(--text-headline)' }}>
-                                                🔬 Skin Analyzer Visualization
-                                            </h3>
-                                            <button
-                                                onClick={() => setShowOriginal(!showOriginal)}
-                                                style={{
-                                                    background: 'var(--primary-color)',
-                                                    color: 'white',
-                                                    border: 'none',
-                                                    borderRadius: '12px',
-                                                    padding: '8px 16px',
-                                                    fontSize: TYPOGRAPHY.small,
-                                                    fontWeight: 600,
-                                                    cursor: 'pointer',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    gap: '6px',
-                                                    fontFamily: 'var(--font-sans)',
-                                                    transition: 'all 0.3s ease'
-                                                }}
-                                            >
-                                                <ImageIcon size={16} />
-                                                {showOriginal ? 'Show Analysis' : 'Show Original'}
-                                            </button>
+                        {/* Detailed content: KIOSK MODE - No authentication required */}
+                        <>
+                            {/* Stage 2: Skin Analyzer Visualization */}
+                            {showVisualization && visualizationImage && (
+                                <div style={{ animation: 'etherealFade 0.6s ease', marginBottom: `${SPACING.section}px` }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: `${SPACING.element}px` }}>
+                                        <h3 style={{ fontSize: TYPOGRAPHY.h3, fontWeight: 600, color: 'var(--text-headline)' }}>
+                                            📸 Original Image
+                                        </h3>
                                         </div>
                                         
                                         <div className="card-glass" style={{ padding: '12px', overflow: 'hidden' }}>
                                             <img 
-                                                src={showOriginal ? (state?.imageBase64 || state?.imageUrl) : visualizationImage}
-                                                alt={showOriginal ? "Original" : "Analysis"}
+                                                src={state?.imageBase64 || state?.imageUrl || visualizationImage}
+                                                alt="Original Scan"
                                                 style={{
                                                     width: '100%',
                                                     height: 'auto',
@@ -1004,62 +858,233 @@ const AnalysisResult = () => {
                                                 marginTop: '8px',
                                                 fontFamily: 'var(--font-sans)'
                                             }}>
-                                                {showOriginal ? '📸 Original Image' : '🔬 15 Analysis Modes Visualization'}
+                                                📸 Original Image
                                             </p>
                                         </div>
                                     </div>
                                 )}
 
-                                {/* Stage 3: 15 Analysis Modes - FROM AI REPORT */}
-                                {showMetrics && aiInsights?.analysis_modes && (
-                                    <div style={{ animation: 'etherealFade 0.6s ease' }}>
+                                {/* Stage 3: 15 Analysis Modes - TEXT BASED */}
+                                {showMetrics && resultData && resultData.analysis_modes && (
+                                    <div style={{ animation: 'etherealFade 0.6s ease', marginBottom: `${SPACING.section}px` }}>
                                         <h3 style={{ fontSize: TYPOGRAPHY.h3, fontWeight: 600, color: 'var(--text-headline)', marginBottom: `${SPACING.element}px`, textShadow: '0 2px 10px rgba(255,255,255,0.8)' }}>
                                             🔬 15 Analysis Modes
                                         </h3>
+                                        
                                         <div style={{ 
                                             display: 'grid', 
-                                            gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-                                            gap: `${SPACING.grid}px` 
+                                            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                                            gap: `${SPACING.grid}px`
                                         }}>
-                                            {aiInsights.analysis_modes.map((mode, idx) => (
+                                            {resultData.analysis_modes.map((mode, index) => (
                                                 <div 
-                                                    key={idx}
+                                                    key={index}
                                                     className="card-glass" 
                                                     style={{ 
-                                                        padding: '12px', 
-                                                        cursor: 'pointer',
-                                                        transition: 'transform 0.2s ease'
+                                                        padding: '16px',
+                                                        borderLeft: `4px solid ${
+                                                            mode.score >= 80 ? '#10b981' : 
+                                                            mode.score >= 60 ? '#f59e0b' : 
+                                                            '#ef4444'
+                                                        }`,
+                                                        transition: 'all 0.3s ease'
                                                     }}
-                                                    onClick={() => openModeDetail(mode)}
-                                                    onMouseOver={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
-                                                    onMouseOut={(e) => e.currentTarget.style.transform = 'translateY(0)'}
                                                 >
                                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-                                                        <span style={{ fontSize: TYPOGRAPHY.tiny, fontWeight: 600, color: 'var(--text-headline)' }}>
-                                                            {mode.mode}
-                                                        </span>
-                                                        <span style={{ 
-                                                            fontSize: TYPOGRAPHY.tiny, 
+                                                        <h4 style={{ 
+                                                            fontSize: '0.95rem', 
                                                             fontWeight: 700, 
-                                                            color: mode.score >= 80 ? '#10b981' : mode.score >= 60 ? '#f59e0b' : '#ef4444'
+                                                            color: 'var(--text-headline)',
+                                                            margin: 0,
+                                                            fontFamily: 'var(--font-sans)'
+                                                        }}>
+                                                            {mode.title}
+                                                        </h4>
+                                                        <span style={{
+                                                            fontSize: '1.1rem',
+                                                            fontWeight: 700,
+                                                            color: mode.score >= 80 ? '#10b981' : 
+                                                                   mode.score >= 60 ? '#f59e0b' : 
+                                                                   '#ef4444',
+                                                            fontFamily: 'var(--font-mono)'
                                                         }}>
                                                             {mode.score}
                                                         </span>
                                                     </div>
-                                                    <p style={{ fontSize: TYPOGRAPHY.tiny, color: 'var(--text-body)', margin: 0 }}>
-                                                        {mode.status}
+                                                    
+                                                    <div style={{ marginBottom: '8px' }}>
+                                                        <span style={{
+                                                            display: 'inline-block',
+                                                            padding: '4px 10px',
+                                                            borderRadius: '12px',
+                                                            fontSize: '0.75rem',
+                                                            fontWeight: 600,
+                                                            background: mode.score >= 80 ? 'rgba(16, 185, 129, 0.15)' : 
+                                                                       mode.score >= 60 ? 'rgba(245, 158, 11, 0.15)' : 
+                                                                       'rgba(239, 68, 68, 0.15)',
+                                                            color: mode.score >= 80 ? '#10b981' : 
+                                                                   mode.score >= 60 ? '#f59e0b' : 
+                                                                   '#ef4444',
+                                                            fontFamily: 'var(--font-sans)'
+                                                        }}>
+                                                            {mode.status}
+                                                        </span>
+                                                    </div>
+                                                    
+                                                    <p style={{
+                                                        fontSize: '0.8rem',
+                                                        color: 'var(--text-body)',
+                                                        lineHeight: 1.5,
+                                                        margin: '8px 0 0 0',
+                                                        fontFamily: 'var(--font-sans)'
+                                                    }}>
+                                                        {mode.insight || mode.detail}
                                                     </p>
                                                 </div>
                                             ))}
                                         </div>
+                                    </div>
+                                )}
 
-                                        {/* Wawasan Tambahan - COMPACT */}
+                                {/* Stage 4: Full Analysis Data */}
+                                {showMetrics && resultData && (
+                                    <div style={{ animation: 'etherealFade 0.6s ease' }}>
+                                        {/* Analysis Metrics Grid */}
+                                        <h3 style={{ fontSize: TYPOGRAPHY.h3, fontWeight: 600, color: 'var(--text-headline)', marginBottom: `${SPACING.element}px`, textShadow: '0 2px 10px rgba(255,255,255,0.8)' }}>
+                                            📊 Analisis Detail Kulit
+                                        </h3>
+                                        
+                                        <div style={{ 
+                                            display: 'grid', 
+                                            gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+                                            gap: `${SPACING.grid}px`,
+                                            marginBottom: '20px'
+                                        }}>
+                                            {/* Acne */}
+                                            {resultData.acne && (
+                                                <div className="card-glass" style={{ padding: '16px' }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                                        <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-headline)' }}>Jerawat</span>
+                                                        <span style={{ fontSize: '0.9rem', fontWeight: 700, color: resultData.acne.acne_score >= 80 ? '#10b981' : resultData.acne.acne_score >= 60 ? '#f59e0b' : '#ef4444' }}>
+                                                            {resultData.acne.acne_score || 0}
+                                                        </span>
+                                                    </div>
+                                                    <p style={{ fontSize: '0.8rem', color: 'var(--text-body)', margin: 0 }}>
+                                                        {resultData.acne.severity || 'Normal'} • {resultData.acne.acne_count || 0} jerawat
+                                                    </p>
+                                                </div>
+                                            )}
+                                            
+                                            {/* Wrinkles */}
+                                            {resultData.wrinkles && (
+                                                <div className="card-glass" style={{ padding: '16px' }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                                        <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-headline)' }}>Kerutan</span>
+                                                        <span style={{ fontSize: '0.9rem', fontWeight: 700, color: (100 - (resultData.wrinkles.wrinkle_severity || 0)) >= 80 ? '#10b981' : (100 - (resultData.wrinkles.wrinkle_severity || 0)) >= 60 ? '#f59e0b' : '#ef4444' }}>
+                                                            {100 - (resultData.wrinkles.wrinkle_severity || 0)}
+                                                        </span>
+                                                    </div>
+                                                    <p style={{ fontSize: '0.8rem', color: 'var(--text-body)', margin: 0 }}>
+                                                        {resultData.wrinkles.severity || 'Minimal'} • {resultData.wrinkles.wrinkle_count || 0} garis
+                                                    </p>
+                                                </div>
+                                            )}
+                                            
+                                            {/* Pigmentation */}
+                                            {resultData.pigmentation && (
+                                                <div className="card-glass" style={{ padding: '16px' }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                                        <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-headline)' }}>Pigmentasi</span>
+                                                        <span style={{ fontSize: '0.9rem', fontWeight: 700, color: (resultData.pigmentation.uniformity_score || 0) >= 80 ? '#10b981' : (resultData.pigmentation.uniformity_score || 0) >= 60 ? '#f59e0b' : '#ef4444' }}>
+                                                            {resultData.pigmentation.uniformity_score || 0}
+                                                        </span>
+                                                    </div>
+                                                    <p style={{ fontSize: '0.8rem', color: 'var(--text-body)', margin: 0 }}>
+                                                        {resultData.pigmentation.severity || 'Ringan'} • {resultData.pigmentation.dark_spot_count || 0} bintik
+                                                    </p>
+                                                </div>
+                                            )}
+                                            
+                                            {/* Hydration */}
+                                            {resultData.hydration && (
+                                                <div className="card-glass" style={{ padding: '16px' }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                                        <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-headline)' }}>Hidrasi</span>
+                                                        <span style={{ fontSize: '0.9rem', fontWeight: 700, color: (resultData.hydration.hydration_level || 0) >= 80 ? '#10b981' : (resultData.hydration.hydration_level || 0) >= 60 ? '#f59e0b' : '#ef4444' }}>
+                                                            {resultData.hydration.hydration_level || 0}
+                                                        </span>
+                                                    </div>
+                                                    <p style={{ fontSize: '0.8rem', color: 'var(--text-body)', margin: 0 }}>
+                                                        {resultData.hydration.status || 'Normal'}
+                                                    </p>
+                                                </div>
+                                            )}
+                                            
+                                            {/* Oiliness */}
+                                            {resultData.oiliness && (
+                                                <div className="card-glass" style={{ padding: '16px' }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                                        <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-headline)' }}>Berminyak</span>
+                                                        <span style={{ fontSize: '0.9rem', fontWeight: 700, color: (100 - (resultData.oiliness.oiliness_score || 0)) >= 80 ? '#10b981' : (100 - (resultData.oiliness.oiliness_score || 0)) >= 60 ? '#f59e0b' : '#ef4444' }}>
+                                                            {100 - (resultData.oiliness.oiliness_score || 0)}
+                                                        </span>
+                                                    </div>
+                                                    <p style={{ fontSize: '0.8rem', color: 'var(--text-body)', margin: 0 }}>
+                                                        {resultData.oiliness.sebum_level || 'Sedang'}
+                                                    </p>
+                                                </div>
+                                            )}
+                                            
+                                            {/* Pores */}
+                                            {resultData.pores && (
+                                                <div className="card-glass" style={{ padding: '16px' }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                                        <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-headline)' }}>Pori-pori</span>
+                                                        <span style={{ fontSize: '0.9rem', fontWeight: 700, color: (resultData.pores.pore_score || 0) >= 80 ? '#10b981' : (resultData.pores.pore_score || 0) >= 60 ? '#f59e0b' : '#ef4444' }}>
+                                                            {resultData.pores.pore_score || 0}
+                                                        </span>
+                                                    </div>
+                                                    <p style={{ fontSize: '0.8rem', color: 'var(--text-body)', margin: 0 }}>
+                                                        {resultData.pores.visibility || 'Sedang'} • {resultData.pores.enlarged_count || 0} membesar
+                                                    </p>
+                                                </div>
+                                            )}
+                                            
+                                            {/* Texture */}
+                                            {resultData.texture && (
+                                                <div className="card-glass" style={{ padding: '16px' }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                                        <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-headline)' }}>Tekstur</span>
+                                                        <span style={{ fontSize: '0.9rem', fontWeight: 700, color: (resultData.texture.texture_score || 0) >= 80 ? '#10b981' : (resultData.texture.texture_score || 0) >= 60 ? '#f59e0b' : '#ef4444' }}>
+                                                            {resultData.texture.texture_score || 0}
+                                                        </span>
+                                                    </div>
+                                                    <p style={{ fontSize: '0.8rem', color: 'var(--text-body)', margin: 0 }}>
+                                                        {resultData.texture.smoothness || 'Halus'}
+                                                    </p>
+                                                </div>
+                                            )}
+                                            
+                                            {/* Eye Area */}
+                                            {resultData.eye_area && (
+                                                <div className="card-glass" style={{ padding: '16px' }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                                        <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-headline)' }}>Area Mata</span>
+                                                        <span style={{ fontSize: '0.9rem', fontWeight: 700, color: (resultData.eye_area.firmness || 0) >= 80 ? '#10b981' : (resultData.eye_area.firmness || 0) >= 60 ? '#f59e0b' : '#ef4444' }}>
+                                                            {resultData.eye_area.firmness || 0}
+                                                        </span>
+                                                    </div>
+                                                    <p style={{ fontSize: '0.8rem', color: 'var(--text-body)', margin: 0 }}>
+                                                        Lingkaran mata: {resultData.eye_area.dark_circles || 0}%
+                                                    </p>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Additional Info - Integrated (No Title, No Usia Prediksi, No Engine) */}
                                         <div className="card-glass" style={{ padding: '20px', marginTop: '16px' }}>
-                                            <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-headline)', marginBottom: '16px', fontFamily: 'var(--font-sans)' }}>
-                                                💎 Wawasan Tambahan
-                                            </h3>
                                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                                                {/* Row 1 */}
+                                                {/* Only show Jenis Kulit and Warna Kulit */}
                                                 <div style={{ background: 'rgba(255,255,255,0.6)', borderRadius: '12px', padding: '12px', borderLeft: '3px solid var(--primary-color)' }}>
                                                     <p style={{ fontSize: '0.75rem', color: 'var(--text-body)', marginBottom: '4px', fontWeight: 500 }}>Jenis Kulit</p>
                                                     <p style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-headline)', margin: 0, fontFamily: 'var(--font-sans)' }}>
@@ -1069,52 +1094,30 @@ const AnalysisResult = () => {
                                                 <div style={{ background: 'rgba(255,255,255,0.6)', borderRadius: '12px', padding: '12px', borderLeft: '3px solid var(--primary-color)' }}>
                                                     <p style={{ fontSize: '0.75rem', color: 'var(--text-body)', marginBottom: '4px', fontWeight: 500 }}>Warna Kulit</p>
                                                     <p style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-headline)', margin: 0, fontFamily: 'var(--font-sans)' }}>
-                                                        {resultData?.fitzpatrick_type || "Type III"}
-                                                    </p>
-                                                </div>
-                                                
-                                                {/* Row 2 */}
-                                                <div style={{ background: 'rgba(255,255,255,0.6)', borderRadius: '12px', padding: '12px', borderLeft: '3px solid var(--primary-color)' }}>
-                                                    <p style={{ fontSize: '0.75rem', color: 'var(--text-body)', marginBottom: '4px', fontWeight: 500 }}>Undertone</p>
-                                                    <p style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-headline)', margin: 0, fontFamily: 'var(--font-sans)' }}>
-                                                        {resultData?.skin_tone?.undertone || "Neutral"}
-                                                    </p>
-                                                </div>
-                                                <div style={{ background: 'rgba(255,255,255,0.6)', borderRadius: '12px', padding: '12px', borderLeft: '3px solid var(--primary-color)' }}>
-                                                    <p style={{ fontSize: '0.75rem', color: 'var(--text-body)', marginBottom: '4px', fontWeight: 500 }}>Jenis Kulit</p>
-                                                    <p style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-headline)', margin: 0, fontFamily: 'var(--font-sans)' }}>
-                                                        {resultData?.skin_type || 'Normal'}
-                                                    </p>
-                                                </div>
-                                                
-                                                {/* Row 3 */}
-                                                <div style={{ background: 'rgba(255,255,255,0.6)', borderRadius: '12px', padding: '12px', borderLeft: '3px solid var(--primary-color)' }}>
-                                                    <p style={{ fontSize: '0.75rem', color: 'var(--text-body)', marginBottom: '4px', fontWeight: 500 }}>Hidrasi</p>
-                                                    <p style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-headline)', margin: 0, fontFamily: 'var(--font-sans)' }}>
-                                                        {resultData?.hydration?.hydration_level || 0}% ({resultData?.hydration?.status || "Normal"})
-                                                    </p>
-                                                </div>
-                                                <div style={{ background: 'rgba(255,255,255,0.6)', borderRadius: '12px', padding: '12px', borderLeft: '3px solid var(--primary-color)' }}>
-                                                    <p style={{ fontSize: '0.75rem', color: 'var(--text-body)', marginBottom: '4px', fontWeight: 500 }}>Minyak</p>
-                                                    <p style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-headline)', margin: 0, fontFamily: 'var(--font-sans)' }}>
-                                                        {resultData?.oiliness?.oiliness_score || 0}% ({resultData?.oiliness?.sebum_level || "Balanced"})
-                                                    </p>
-                                                </div>
-                                                
-                                                {/* Row 4 */}
-                                                <div style={{ background: 'rgba(255,255,255,0.6)', borderRadius: '12px', padding: '12px', borderLeft: '3px solid var(--primary-color)' }}>
-                                                    <p style={{ fontSize: '0.75rem', color: 'var(--text-body)', marginBottom: '4px', fontWeight: 500 }}>Tekstur</p>
-                                                    <p style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-headline)', margin: 0, fontFamily: 'var(--font-sans)' }}>
-                                                        {resultData?.texture?.smoothness_score || 0}/100 ({resultData?.texture?.severity || "Smooth"})
-                                                    </p>
-                                                </div>
-                                                <div style={{ background: 'rgba(255,255,255,0.6)', borderRadius: '12px', padding: '12px', borderLeft: '3px solid var(--primary-color)' }}>
-                                                    <p style={{ fontSize: '0.75rem', color: 'var(--text-body)', marginBottom: '4px', fontWeight: 500 }}>Pori-pori</p>
-                                                    <p style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-headline)', margin: 0, fontFamily: 'var(--font-sans)' }}>
-                                                        {resultData?.pores?.pore_density || 0}/cm² ({resultData?.pores?.visibility || "Normal"})
+                                                        {(() => {
+                                                            const fitzType = resultData?.fitzpatrick_type || "III";
+                                                            const typeMap = {
+                                                                'I': 'Tipe I (Sangat Terang)',
+                                                                'II': 'Tipe II (Terang)',
+                                                                'III': 'Tipe III (Terang-Sedang)',
+                                                                'IV': 'Tipe IV (Sedang/Asia)',
+                                                                'V': 'Tipe V (Gelap)',
+                                                                'VI': 'Tipe VI (Sangat Gelap)'
+                                                            };
+                                                            return typeMap[fitzType] || `Tipe ${fitzType}`;
+                                                        })()}
                                                     </p>
                                                 </div>
                                             </div>
+                                            
+                                            {/* Analisis Jenis Kulit - INTEGRATED HERE */}
+                                            {aiInsights?.skin_type_analysis && (
+                                                <div style={{ marginTop: '16px', padding: '16px', background: 'rgba(255,255,255,0.5)', borderRadius: '12px', borderLeft: '4px solid var(--primary-color)' }}>
+                                                    <p style={{ fontSize: '0.9rem', color: 'var(--text-body)', lineHeight: 1.6, margin: 0, fontFamily: 'var(--font-sans)' }}>
+                                                        {aiInsights.skin_type_analysis}
+                                                    </p>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 )}
@@ -1123,18 +1126,6 @@ const AnalysisResult = () => {
                                 {showProducts && aiInsights && (
                                     <div style={{ animation: 'etherealFade 0.6s ease', marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                         
-                                        {/* AI Summary */}
-                                        {aiInsights.summary && (
-                                            <div className="card-glass" style={{ padding: '16px' }}>
-                                                <h4 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-headline)', marginBottom: '12px', fontFamily: 'var(--font-sans)' }}>
-                                                    📋 Ringkasan AI
-                                                </h4>
-                                                <p style={{ fontSize: '0.9rem', color: 'var(--text-body)', lineHeight: 1.6, margin: 0, fontFamily: 'var(--font-sans)' }}>
-                                                    {aiInsights.summary}
-                                                </p>
-                                            </div>
-                                        )}
-
                                         {/* Main Concerns */}
                                         {aiInsights.main_concerns && aiInsights.main_concerns.length > 0 && (
                                             <div className="card-glass" style={{ padding: '16px' }}>
@@ -1156,18 +1147,6 @@ const AnalysisResult = () => {
                                                         </span>
                                                     ))}
                                                 </div>
-                                            </div>
-                                        )}
-
-                                        {/* Skin Type Analysis */}
-                                        {aiInsights.skin_type_analysis && (
-                                            <div className="card-glass" style={{ padding: '16px' }}>
-                                                <h4 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-headline)', marginBottom: '12px', fontFamily: 'var(--font-sans)' }}>
-                                                    🔬 Analisis Jenis Kulit
-                                                </h4>
-                                                <p style={{ fontSize: '0.9rem', color: 'var(--text-body)', lineHeight: 1.6, margin: 0, fontFamily: 'var(--font-sans)' }}>
-                                                    {aiInsights.skin_type_analysis}
-                                                </p>
                                             </div>
                                         )}
 
@@ -1476,78 +1455,664 @@ const AnalysisResult = () => {
                                     </div>
                                 )}
 
-                                {/* Stage 4: Action Buttons */}
+                                {/* Stage 4: WhatsApp Form & Send Button - Glassmorphism Style */}
                                 {showProducts && (
-                                    <div style={{ animation: 'etherealFade 0.6s ease', marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                        {/* Button 1: Lihat Semua Rekomendasi Produk */}
+                                    <div style={{ animation: 'etherealFade 0.6s ease', marginTop: '24px' }}>
+                                        {/* Glassmorphism Card Container */}
+                                        <div style={{
+                                            background: 'rgba(255, 255, 255, 0.75)',
+                                            backdropFilter: 'blur(25px)',
+                                            WebkitBackdropFilter: 'blur(25px)',
+                                            borderRadius: '28px',
+                                            padding: '32px 28px',
+                                            border: '1px solid rgba(255, 255, 255, 0.85)',
+                                            boxShadow: '0 10px 40px rgba(89, 54, 69, 0.08)',
+                                            marginBottom: '20px'
+                                        }}>
+                                            {/* Header */}
+                                            <div style={{ 
+                                                textAlign: 'center', 
+                                                marginBottom: '28px',
+                                                paddingBottom: '20px',
+                                                borderBottom: '1px solid rgba(157, 90, 118, 0.1)'
+                                            }}>
+                                                <h3 style={{
+                                                    margin: '0 0 8px 0',
+                                                    fontSize: '1.4rem',
+                                                    fontWeight: 600,
+                                                    color: 'var(--text-headline)',
+                                                    fontFamily: '"Bricolage Grotesque", -apple-system, BlinkMacSystemFont, sans-serif',
+                                                    letterSpacing: '-0.01em'
+                                                }}>
+                                                    📱 Dapatkan Hasil Lengkap
+                                                </h3>
+                                                <p style={{
+                                                    margin: 0,
+                                                    fontSize: '0.9rem',
+                                                    color: 'var(--text-body)',
+                                                    fontFamily: 'var(--font-sans)',
+                                                    lineHeight: 1.5
+                                                }}>
+                                                    Masukkan data Anda untuk menerima hasil via WhatsApp
+                                                </p>
+                                            </div>
+                                            
+                                            {/* Input Fields */}
+                                            <div style={{ marginBottom: '24px' }}>
+                                                {/* Name Input */}
+                                                <div style={{ marginBottom: '20px' }}>
+                                                    <label style={{
+                                                        display: 'block',
+                                                        fontSize: '0.95rem',
+                                                        fontWeight: 600,
+                                                        color: 'var(--text-headline)',
+                                                        marginBottom: '10px',
+                                                        fontFamily: 'var(--font-sans)'
+                                                    }}>
+                                                        Nama Lengkap
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        value={userName}
+                                                        onChange={(e) => setUserName(e.target.value)}
+                                                        placeholder="Masukkan nama Anda"
+                                                        style={{
+                                                            width: '100%',
+                                                            padding: '16px 20px',
+                                                            fontSize: '1rem',
+                                                            border: '2px solid rgba(157, 90, 118, 0.15)',
+                                                            borderRadius: '16px',
+                                                            fontFamily: 'var(--font-sans)',
+                                                            outline: 'none',
+                                                            transition: 'all 0.3s ease',
+                                                            boxSizing: 'border-box',
+                                                            background: 'rgba(255, 255, 255, 0.6)',
+                                                            backdropFilter: 'blur(10px)'
+                                                        }}
+                                                        onFocus={(e) => {
+                                                            e.target.style.borderColor = 'var(--primary-color)';
+                                                            e.target.style.background = 'rgba(255, 255, 255, 0.9)';
+                                                            e.target.style.boxShadow = '0 4px 12px rgba(157, 90, 118, 0.15)';
+                                                        }}
+                                                        onBlur={(e) => {
+                                                            e.target.style.borderColor = 'rgba(157, 90, 118, 0.15)';
+                                                            e.target.style.background = 'rgba(255, 255, 255, 0.6)';
+                                                            e.target.style.boxShadow = 'none';
+                                                        }}
+                                                    />
+                                                </div>
+                                                
+                                                {/* WhatsApp Input */}
+                                                <div>
+                                                    <label style={{
+                                                        display: 'block',
+                                                        fontSize: '0.95rem',
+                                                        fontWeight: 600,
+                                                        color: 'var(--text-headline)',
+                                                        marginBottom: '10px',
+                                                        fontFamily: 'var(--font-sans)'
+                                                    }}>
+                                                        Nomor WhatsApp
+                                                    </label>
+                                                    <input
+                                                        type="tel"
+                                                        value={userWhatsApp}
+                                                        onChange={(e) => setUserWhatsApp(e.target.value)}
+                                                        placeholder="08xx xxxx xxxx"
+                                                        style={{
+                                                            width: '100%',
+                                                            padding: '16px 20px',
+                                                            fontSize: '1rem',
+                                                            border: '2px solid rgba(157, 90, 118, 0.15)',
+                                                            borderRadius: '16px',
+                                                            fontFamily: 'var(--font-sans)',
+                                                            outline: 'none',
+                                                            transition: 'all 0.3s ease',
+                                                            boxSizing: 'border-box',
+                                                            background: 'rgba(255, 255, 255, 0.6)',
+                                                            backdropFilter: 'blur(10px)'
+                                                        }}
+                                                        onFocus={(e) => {
+                                                            e.target.style.borderColor = 'var(--primary-color)';
+                                                            e.target.style.background = 'rgba(255, 255, 255, 0.9)';
+                                                            e.target.style.boxShadow = '0 4px 12px rgba(157, 90, 118, 0.15)';
+                                                        }}
+                                                        onBlur={(e) => {
+                                                            e.target.style.borderColor = 'rgba(157, 90, 118, 0.15)';
+                                                            e.target.style.background = 'rgba(255, 255, 255, 0.6)';
+                                                            e.target.style.boxShadow = 'none';
+                                                        }}
+                                                    />
+                                                    <p style={{
+                                                        margin: '8px 0 0',
+                                                        fontSize: '0.8rem',
+                                                        color: 'var(--text-body)',
+                                                        fontFamily: 'var(--font-sans)',
+                                                        fontStyle: 'italic'
+                                                    }}>
+                                                        Format: 08xxxxxxxxxx atau +62xxxxxxxxxx
+                                                    </p>
+                                                </div>
+                                                
+                                                {/* Email Input */}
+                                                <div>
+                                                    <label style={{
+                                                        display: 'block',
+                                                        fontSize: '0.95rem',
+                                                        fontWeight: 600,
+                                                        color: 'var(--text-headline)',
+                                                        marginBottom: '10px',
+                                                        fontFamily: 'var(--font-sans)'
+                                                    }}>
+                                                        Email (Opsional)
+                                                    </label>
+                                                    <input
+                                                        type="email"
+                                                        value={userEmail}
+                                                        onChange={(e) => setUserEmail(e.target.value)}
+                                                        placeholder="email@example.com"
+                                                        style={{
+                                                            width: '100%',
+                                                            padding: '16px 20px',
+                                                            fontSize: '1rem',
+                                                            border: '2px solid rgba(157, 90, 118, 0.15)',
+                                                            borderRadius: '16px',
+                                                            fontFamily: 'var(--font-sans)',
+                                                            outline: 'none',
+                                                            transition: 'all 0.3s ease',
+                                                            boxSizing: 'border-box',
+                                                            background: 'rgba(255, 255, 255, 0.6)',
+                                                            backdropFilter: 'blur(10px)'
+                                                        }}
+                                                        onFocus={(e) => {
+                                                            e.target.style.borderColor = 'var(--primary-color)';
+                                                            e.target.style.background = 'rgba(255, 255, 255, 0.9)';
+                                                            e.target.style.boxShadow = '0 4px 12px rgba(157, 90, 118, 0.15)';
+                                                        }}
+                                                        onBlur={(e) => {
+                                                            e.target.style.borderColor = 'rgba(157, 90, 118, 0.15)';
+                                                            e.target.style.background = 'rgba(255, 255, 255, 0.6)';
+                                                            e.target.style.boxShadow = 'none';
+                                                        }}
+                                                    />
+                                                </div>
+                                            </div>
+                                            
+                                            {/* Send Button - Glassmorphism */}
+                                            <button
+                                                onClick={async () => {
+                                                    // Validate inputs
+                                                    if (!userName.trim()) {
+                                                        alert('Mohon masukkan nama Anda');
+                                                        return;
+                                                    }
+                                                    if (!userWhatsApp.trim()) {
+                                                        alert('Mohon masukkan nomor WhatsApp Anda');
+                                                        return;
+                                                    }
+                                                    
+                                                    // Normalize WhatsApp number
+                                                    let normalizedWA = userWhatsApp.replace(/[^\d+]/g, '');
+                                                    if (normalizedWA.startsWith('0')) {
+                                                        normalizedWA = '+62' + normalizedWA.substring(1);
+                                                    } else if (!normalizedWA.startsWith('+')) {
+                                                        normalizedWA = '+' + normalizedWA;
+                                                    }
+                                                    
+                                                    setSending(true);
+                                                    
+                                                    try {
+                                                        // Ensure analysis is saved to database first
+                                                        console.log('💾 Ensuring analysis is saved to database...');
+                                                        console.log('💾 Current sessionId:', sessionId);
+                                                        console.log('💾 Current resultData:', {
+                                                            overall_score: resultData?.overall_score,
+                                                            skin_type: resultData?.skin_type,
+                                                            has_ai_insights: !!resultData?.ai_insights,
+                                                            has_ai_report: !!resultData?.ai_report
+                                                        });
+                                                        
+                                                        // Pass image to auto-save WITH customer info (no visualization)
+                                                        const savedAnalysis = await autoSaveAnalysis(
+                                                            resultData, 
+                                                            sessionId,
+                                                            state?.imageBase64 || localStorage.getItem('cantik_last_scan_image'),
+                                                            null, // No visualization image
+                                                            userName, // Customer name
+                                                            normalizedWA, // Customer WhatsApp
+                                                            userEmail || null // Customer email
+                                                        );
+                                                        console.log('✅ Analysis saved to database:', savedAnalysis?.id);
+                                                        
+                                                        // Generate result URL - FIXED PATH
+                                                        const resultUrl = `${window.location.origin}/analysis/${sessionId}`;
+                                                        console.log('🔗 Generated result URL:', resultUrl);
+                                                        
+                                                        // Prepare SUPER DETAILED WhatsApp message
+                                                        const acneScore = resultData?.acne?.acne_score || 0;
+                                                        const wrinkleScore = resultData?.wrinkles ? (100 - (resultData.wrinkles.wrinkle_severity || 0)) : 0;
+                                                        const pigmentationScore = resultData?.pigmentation?.uniformity_score || 0;
+                                                        const hydrationScore = resultData?.hydration?.hydration_level || 0;
+                                                        const poreScore = resultData?.pores?.pore_score || 0;
+                                                        
+                                                        const priorityConcerns = resultData?.priority_concerns || [];
+                                                        const concernsList = priorityConcerns.length > 0 
+                                                            ? priorityConcerns.map((c, i) => `${i + 1}. ${c.concern} (${c.severity})`).join('\n')
+                                                            : 'Tidak ada concern prioritas';
+                                                        
+                                                        const message = `🌸 *HASIL ANALISIS KULIT LENGKAP* 🌸
+
+Halo ${userName}! 👋
+
+Terima kasih telah melakukan analisis kulit di Cantik.ai. Berikut adalah hasil lengkap analisis Anda:
+
+━━━━━━━━━━━━━━━━━━━━
+📊 *RINGKASAN KESEHATAN KULIT*
+━━━━━━━━━━━━━━━━━━━━
+
+✨ Skor Kesehatan: *${resultData?.overall_score || 0}/100*
+🔬 Jenis Kulit: *${resultData?.skin_type || 'Unknown'}*
+🎯 Fitzpatrick Type: *${resultData?.fitzpatrick_type || 'III'}*
+👤 Usia Prediksi: *${resultData?.predicted_age || 25} tahun*
+
+━━━━━━━━━━━━━━━━━━━━
+🔍 *ANALISIS DETAIL 8 PARAMETER*
+━━━━━━━━━━━━━━━━━━━━
+
+1️⃣ Jerawat (Acne): ${acneScore}/100
+   ${resultData?.acne?.severity || 'Normal'} • ${resultData?.acne?.acne_count || 0} jerawat terdeteksi
+
+2️⃣ Kerutan (Wrinkles): ${wrinkleScore}/100
+   ${resultData?.wrinkles?.severity || 'Minimal'} • ${resultData?.wrinkles?.wrinkle_count || 0} garis halus
+
+3️⃣ Pigmentasi: ${pigmentationScore}/100
+   ${resultData?.pigmentation?.severity || 'Ringan'} • ${resultData?.pigmentation?.dark_spot_count || 0} bintik gelap
+
+4️⃣ Hidrasi: ${hydrationScore}/100
+   Status: ${resultData?.hydration?.status || 'Normal'}
+
+5️⃣ Pori-pori: ${poreScore}/100
+   ${resultData?.pores?.visibility || 'Sedang'} • ${resultData?.pores?.enlarged_count || 0} pori membesar
+
+6️⃣ Berminyak: ${100 - (resultData?.oiliness?.oiliness_score || 0)}/100
+   Level Sebum: ${resultData?.oiliness?.sebum_level || 'Sedang'}
+
+7️⃣ Tekstur: ${resultData?.texture?.texture_score || 0}/100
+   Kelembutan: ${resultData?.texture?.smoothness || 'Halus'}
+
+8️⃣ Area Mata: ${resultData?.eye_area?.firmness || 0}/100
+   Lingkaran Mata: ${resultData?.eye_area?.dark_circles || 0}%
+
+━━━━━━━━━━━━━━━━━━━━
+⚠️ *PRIORITAS PERHATIAN*
+━━━━━━━━━━━━━━━━━━━━
+
+${concernsList}
+
+━━━━━━━━━━━━━━━━━━━━
+💡 *REKOMENDASI AI DERMATOLOGIST*
+━━━━━━━━━━━━━━━━━━━━
+
+${aiInsights?.summary || 'Jaga rutinitas skincare konsisten untuk hasil optimal.'}
+
+━━━━━━━━━━━━━━━━━━━━
+🔗 *LIHAT HASIL SUPER LENGKAP*
+━━━━━━━━━━━━━━━━━━━━
+
+Klik link di bawah untuk melihat:
+✅ Visualisasi 15 Mode Analisis
+✅ Rekomendasi Produk Personal
+✅ Rutinitas Perawatan Lengkap
+✅ Tips & Saran dari AI Expert
+✅ Foto Before & Analysis
+
+👉 ${resultUrl}
+
+━━━━━━━━━━━━━━━━━━━━
+
+Simpan link ini untuk referensi Anda! 💖
+
+🎓 *Gabung dengan komunitas FREE dengan pakar kosmetik!*
+Dapatkan tips skincare, konsultasi gratis, dan update produk terbaru.
+👉 [Link komunitas akan segera hadir]
+
+_Powered by Cantik.ai - AI Skin Analysis_`;
+                                                        
+                                                        console.log('📱 Sending to WhatsApp API...');
+                                                        console.log('📞 ChatId:', `${normalizedWA.replace('+', '')}@c.us`);
+                                                        
+                                                        // Send to WhatsApp API
+                                                        const whatsappResponse = await fetch('https://wa.raycorpgroup.com/api/sendText', {
+                                                            method: 'POST',
+                                                            headers: {
+                                                                'Content-Type': 'application/json',
+                                                                'X-Api-Key': '33a73dbf8cf04b26ae50eb9d2d778e25'
+                                                            },
+                                                            body: JSON.stringify({
+                                                                chatId: `${normalizedWA.replace('+', '')}@c.us`,
+                                                                text: message,
+                                                                session: 'default'
+                                                            })
+                                                        });
+                                                        
+                                                        const responseData = await whatsappResponse.json();
+                                                        console.log('📱 WhatsApp API Response:', responseData);
+                                                        
+                                                        if (!whatsappResponse.ok) {
+                                                            console.error('❌ WhatsApp API Error:', responseData);
+                                                            throw new Error(responseData.message || 'Failed to send WhatsApp message');
+                                                        }
+                                                        
+                                                        console.log('✅ WhatsApp message sent successfully');
+                                                        
+                                                        // Show preview modal
+                                                        setShowPreview(true);
+                                                        
+                                                    } catch (error) {
+                                                        console.error('❌ Error sending to WhatsApp:', error);
+                                                        alert(`Gagal mengirim ke WhatsApp: ${error.message || 'Silakan coba lagi.'}`);
+                                                    } finally {
+                                                        setSending(false);
+                                                    }
+                                                }}
+                                                disabled={sending}
+                                                style={{
+                                                    width: '100%',
+                                                    height: '64px',
+                                                    border: '1px solid rgba(157, 90, 118, 0.2)',
+                                                    borderRadius: '20px',
+                                                    background: sending 
+                                                        ? 'rgba(157, 90, 118, 0.3)' 
+                                                        : 'linear-gradient(135deg, rgba(157, 90, 118, 0.9), rgba(168, 105, 138, 0.9))',
+                                                    backdropFilter: 'blur(20px)',
+                                                    WebkitBackdropFilter: 'blur(20px)',
+                                                    color: 'white',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    gap: '12px',
+                                                    cursor: sending ? 'not-allowed' : 'pointer',
+                                                    boxShadow: sending
+                                                        ? 'none'
+                                                        : '0 8px 24px rgba(157, 90, 118, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.2)',
+                                                    fontSize: '1.1rem',
+                                                    fontWeight: 600,
+                                                    letterSpacing: '0.005em',
+                                                    fontFamily: 'var(--font-sans)',
+                                                    textShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
+                                                    transition: 'all 300ms cubic-bezier(0.34, 1.56, 0.64, 1)',
+                                                    opacity: sending ? 0.6 : 1,
+                                                    position: 'relative',
+                                                    overflow: 'hidden'
+                                                }}
+                                                onMouseEnter={(e) => {
+                                                    if (!sending) {
+                                                        e.currentTarget.style.transform = 'translateY(-2px) scale(1.01)';
+                                                        e.currentTarget.style.boxShadow = '0 12px 32px rgba(157, 90, 118, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.25)';
+                                                    }
+                                                }}
+                                                onMouseLeave={(e) => {
+                                                    if (!sending) {
+                                                        e.currentTarget.style.transform = 'translateY(0) scale(1)';
+                                                        e.currentTarget.style.boxShadow = '0 8px 24px rgba(157, 90, 118, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.2)';
+                                                    }
+                                                }}
+                                            >
+                                                {/* Shimmer effect */}
+                                                {!sending && (
+                                                    <div style={{
+                                                        position: 'absolute',
+                                                        top: 0,
+                                                        left: '-100%',
+                                                        width: '100%',
+                                                        height: '100%',
+                                                        background: 'linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent)',
+                                                        animation: 'shimmer 3s infinite',
+                                                        pointerEvents: 'none'
+                                                    }} />
+                                                )}
+                                                
+                                                <span style={{ position: 'relative', zIndex: 1 }}>
+                                                    {sending ? '⏳ Mengirim...' : '📱 Kirim Hasil Lengkap'}
+                                                </span>
+                                                {!sending && (
+                                                    <MoveUpRight 
+                                                        size={22} 
+                                                        color="white" 
+                                                        style={{ 
+                                                            position: 'relative', 
+                                                            zIndex: 1,
+                                                            filter: 'drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1))'
+                                                        }} 
+                                                    />
+                                                )}
+                                            </button>
+                                            
+                                            <p style={{
+                                                margin: '16px 0 0',
+                                                fontSize: '0.85rem',
+                                                color: 'var(--text-body)',
+                                                textAlign: 'center',
+                                                fontFamily: 'var(--font-sans)',
+                                                lineHeight: 1.6,
+                                                fontStyle: 'italic'
+                                            }}>
+                                                Hasil analisis lengkap akan dikirim ke WhatsApp Anda dengan link akses pribadi
+                                            </p>
+                                        </div>
+                                        
+                                        {/* Back to Onboarding Button - Different Color */}
                                         <button
-                                            onClick={() => navigate('/recommendations', { state: { resultData, aiInsights, backendRecommendations: resultData?.product_recommendations } })}
+                                            onClick={() => navigate('/')}
                                             style={{
+                                                width: '100%',
+                                                height: '56px',
+                                                border: '2px solid rgba(157, 90, 118, 0.3)',
+                                                borderRadius: '18px',
                                                 background: 'transparent',
                                                 color: 'var(--primary-color)',
-                                                border: '2px solid var(--primary-color)',
-                                                borderRadius: '20px',
-                                                padding: '16px 24px',
-                                                fontSize: '1rem',
-                                                fontWeight: 600,
-                                                width: '100%',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                gap: '10px',
                                                 cursor: 'pointer',
-                                                fontFamily: 'var(--font-sans)',
-                                                transition: 'all 0.3s ease',
-                                                display: 'flex',
-                                                justifyContent: 'center',
-                                                alignItems: 'center',
-                                                gap: '12px'
-                                            }}
-                                            onMouseOver={(e) => {
-                                                e.currentTarget.style.background = 'var(--primary-color)';
-                                                e.currentTarget.style.color = 'white';
-                                            }}
-                                            onMouseOut={(e) => {
-                                                e.currentTarget.style.background = 'transparent';
-                                                e.currentTarget.style.color = 'var(--primary-color)';
-                                            }}
-                                        >
-                                            Lihat Semua Rekomendasi Produk
-                                            <MoveUpRight size={20} />
-                                        </button>
-
-                                        {/* Button 2: Simpan Laporan ke Profil */}
-                                        <button
-                                            onClick={saveAnalysisToProfile}
-                                            disabled={saving}
-                                            style={{
-                                                background: saving ? 'rgba(230, 0, 126, 0.5)' : 'var(--primary-color)',
-                                                color: 'white',
-                                                border: 'none',
-                                                borderRadius: '20px',
-                                                padding: '16px 24px',
                                                 fontSize: '1rem',
                                                 fontWeight: 600,
-                                                width: '100%',
-                                                display: 'flex',
-                                                justifyContent: 'center',
-                                                alignItems: 'center',
-                                                gap: '12px',
-                                                boxShadow: '0 10px 25px rgba(89, 54, 69, 0.25)',
-                                                cursor: saving ? 'not-allowed' : 'pointer',
-                                                opacity: saving ? 0.7 : 1,
                                                 fontFamily: 'var(--font-sans)',
                                                 transition: 'all 0.3s ease'
                                             }}
+                                            onMouseEnter={(e) => {
+                                                e.currentTarget.style.background = 'var(--primary-color)';
+                                                e.currentTarget.style.color = 'white';
+                                                e.currentTarget.style.transform = 'translateY(-2px)';
+                                                e.currentTarget.style.boxShadow = '0 8px 20px rgba(157, 90, 118, 0.2)';
+                                            }}
+                                            onMouseLeave={(e) => {
+                                                e.currentTarget.style.background = 'transparent';
+                                                e.currentTarget.style.color = 'var(--primary-color)';
+                                                e.currentTarget.style.transform = 'translateY(0)';
+                                                e.currentTarget.style.boxShadow = 'none';
+                                            }}
                                         >
-                                            {saving ? 'Menyimpan...' : 'Simpan Laporan ke Profil'}
-                                            {!saving && <MoveUpRight size={20} color="white" />}
+                                            🏠 Kembali ke Onboarding
                                         </button>
                                     </div>
                                 )}
                             </>
-                        </DetailedContentWrapper>
 
                     </div>
                 )}
 
             </div>
+            
+            {/* Preview Modal */}
+            {showPreview && (
+                <div style={{
+                    position: 'fixed',
+                    inset: 0,
+                    background: 'rgba(0, 0, 0, 0.7)',
+                    backdropFilter: 'blur(8px)',
+                    zIndex: 9999,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '20px',
+                    animation: 'fadeIn 0.3s ease'
+                }}>
+                    <div style={{
+                        background: 'white',
+                        borderRadius: '24px',
+                        maxWidth: '500px',
+                        width: '100%',
+                        maxHeight: '90vh',
+                        overflow: 'auto',
+                        boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)',
+                        animation: 'slideUp 0.3s ease'
+                    }}>
+                        {/* Header */}
+                        <div style={{
+                            padding: '24px',
+                            borderBottom: '1px solid rgba(157, 90, 118, 0.1)',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center'
+                        }}>
+                            <h2 style={{
+                                margin: 0,
+                                fontSize: '1.5rem',
+                                fontWeight: 600,
+                                color: 'var(--text-headline)',
+                                fontFamily: 'var(--font-display)'
+                            }}>
+                                ✅ Hasil Terkirim!
+                            </h2>
+                            <button
+                                onClick={() => setShowPreview(false)}
+                                style={{
+                                    background: 'transparent',
+                                    border: 'none',
+                                    fontSize: '1.5rem',
+                                    cursor: 'pointer',
+                                    color: 'var(--text-body)',
+                                    padding: '4px',
+                                    lineHeight: 1
+                                }}
+                            >
+                                ×
+                            </button>
+                        </div>
+                        
+                        {/* Content */}
+                        <div style={{ padding: '24px' }}>
+                            <div style={{
+                                background: 'linear-gradient(135deg, #f3e6ee, #faf6f8)',
+                                borderRadius: '16px',
+                                padding: '20px',
+                                marginBottom: '20px',
+                                border: '1px solid rgba(157, 90, 118, 0.1)'
+                            }}>
+                                <p style={{
+                                    margin: '0 0 12px 0',
+                                    fontSize: '1rem',
+                                    color: 'var(--text-headline)',
+                                    fontWeight: 600,
+                                    fontFamily: 'var(--font-sans)'
+                                }}>
+                                    📱 Pesan WhatsApp telah dikirim ke:
+                                </p>
+                                <p style={{
+                                    margin: '0 0 8px 0',
+                                    fontSize: '0.95rem',
+                                    color: 'var(--text-body)',
+                                    fontFamily: 'var(--font-sans)'
+                                }}>
+                                    <strong>Nama:</strong> {userName}
+                                </p>
+                                <p style={{
+                                    margin: 0,
+                                    fontSize: '0.95rem',
+                                    color: 'var(--text-body)',
+                                    fontFamily: 'var(--font-sans)'
+                                }}>
+                                    <strong>WhatsApp:</strong> {userWhatsApp}
+                                </p>
+                            </div>
+                            
+                            <div style={{
+                                background: 'rgba(157, 90, 118, 0.05)',
+                                borderRadius: '12px',
+                                padding: '16px',
+                                marginBottom: '20px'
+                            }}>
+                                <p style={{
+                                    margin: '0 0 8px 0',
+                                    fontSize: '0.9rem',
+                                    fontWeight: 600,
+                                    color: 'var(--text-headline)',
+                                    fontFamily: 'var(--font-sans)'
+                                }}>
+                                    🔗 Link Hasil Anda:
+                                </p>
+                                <p style={{
+                                    margin: 0,
+                                    fontSize: '0.85rem',
+                                    color: 'var(--primary-color)',
+                                    fontFamily: 'monospace',
+                                    wordBreak: 'break-all',
+                                    background: 'white',
+                                    padding: '8px',
+                                    borderRadius: '8px'
+                                }}>
+                                    {window.location.origin}/skinanalyzer/result/{sessionId}
+                                </p>
+                            </div>
+                            
+                            <p style={{
+                                margin: '0 0 20px 0',
+                                fontSize: '0.9rem',
+                                color: 'var(--text-body)',
+                                textAlign: 'center',
+                                lineHeight: 1.6,
+                                fontFamily: 'var(--font-sans)'
+                            }}>
+                                Link hasil analisis sudah dikirim ke WhatsApp Anda. Buka WhatsApp untuk melihat pesan dan mengakses hasil lengkap.
+                            </p>
+                            
+                            {/* Back to Onboarding Button */}
+                            <button
+                                onClick={() => {
+                                    setShowPreview(false);
+                                    navigate('/');
+                                }}
+                                style={{
+                                    background: 'var(--primary-color)',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '16px',
+                                    padding: '16px 24px',
+                                    fontSize: '1rem',
+                                    fontWeight: 600,
+                                    width: '100%',
+                                    cursor: 'pointer',
+                                    fontFamily: 'var(--font-sans)',
+                                    transition: 'all 0.3s ease',
+                                    boxShadow: '0 8px 20px rgba(89, 54, 69, 0.2)'
+                                }}
+                                onMouseOver={(e) => {
+                                    e.currentTarget.style.transform = 'translateY(-2px)';
+                                    e.currentTarget.style.boxShadow = '0 12px 28px rgba(89, 54, 69, 0.3)';
+                                }}
+                                onMouseOut={(e) => {
+                                    e.currentTarget.style.transform = 'translateY(0)';
+                                    e.currentTarget.style.boxShadow = '0 8px 20px rgba(89, 54, 69, 0.2)';
+                                }}
+                            >
+                                🏠 Kembali ke Onboarding
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
             
             {/* Analysis Mode Detail Modal */}
             {selectedMode && (
@@ -1556,18 +2121,25 @@ const AnalysisResult = () => {
                     onClose={() => setSelectedMode(null)}
                 />
             )}
-
-            {/* Login Prompt Modal */}
-            {showLoginPrompt && (
-                <LoginPrompt
-                    message="Login untuk melihat analisis lengkap dan menyimpan riwayat"
-                    feature="Analisis Lengkap"
-                    onClose={() => setShowLoginPrompt(false)}
-                />
-            )}
             
             {/* Animation Styles */}
             <style>{`
+                @keyframes fadeIn {
+                    from { opacity: 0; }
+                    to { opacity: 1; }
+                }
+                
+                @keyframes slideUp {
+                    from { 
+                        opacity: 0;
+                        transform: translateY(30px);
+                    }
+                    to { 
+                        opacity: 1;
+                        transform: translateY(0);
+                    }
+                }
+                
                 @keyframes shimmer {
                     0% { transform: translateX(-100%); }
                     100% { transform: translateX(100%); }
@@ -1583,8 +2155,6 @@ const AnalysisResult = () => {
                     }
                 }
             `}</style>
-            
-            <BottomNav />
         </div>
     );
 

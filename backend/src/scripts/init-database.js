@@ -21,7 +21,7 @@ const dbConfig = {
     port: process.env.DB_PORT || 3306,
     user: process.env.DB_USER || 'root',
     password: process.env.DB_PASSWORD || '',
-    database: process.env.DB_NAME || 'skin_analyzer',
+    database: process.env.DB_NAME || 'skin_analyzer_kiosk',
     charset: 'utf8mb4'
 };
 
@@ -248,25 +248,47 @@ async function initializeDatabase() {
     let connection;
     
     try {
-        // Create connection
+        // First, connect without database to create it
+        const connectionWithoutDB = await mysql.createConnection({
+            host: dbConfig.host,
+            port: dbConfig.port,
+            user: dbConfig.user,
+            password: dbConfig.password,
+            charset: 'utf8mb4'
+        });
+        
+        // Create database if not exists
+        await connectionWithoutDB.execute(`CREATE DATABASE IF NOT EXISTS ${dbConfig.database} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
+        console.log(`✅ Database '${dbConfig.database}' created or already exists`);
+        await connectionWithoutDB.end();
+        
+        // Now connect to the database
         connection = await mysql.createConnection(dbConfig);
         console.log('✅ MySQL Database connected successfully');
 
         // Split SQL statements and execute them
-        const statements = createTablesSQL
+        // Remove comments first
+        const cleanSQL = createTablesSQL
+            .split('\n')
+            .filter(line => !line.trim().startsWith('--'))
+            .join('\n');
+            
+        const statements = cleanSQL
             .split(';')
             .map(stmt => stmt.trim())
-            .filter(stmt => stmt.length > 0 && !stmt.startsWith('--'));
+            .filter(stmt => stmt.length > 0);
 
         for (let i = 0; i < statements.length; i++) {
             const statement = statements[i];
             if (statement) {
                 try {
                     await connection.execute(statement);
-                    console.log(`✅ Table/Index ${i + 1}/${statements.length} created`);
+                    console.log(`✅ Statement ${i + 1}/${statements.length} executed`);
                 } catch (error) {
                     if (error.code !== 'ER_TABLE_EXISTS_ERROR' && error.code !== 'ER_DUP_KEYNAME') {
-                        console.warn(`⚠️  Statement ${i + 1} warning:`, error.message);
+                        console.error(`❌ Statement ${i + 1} error:`, error.message);
+                        console.error('Statement:', statement.substring(0, 100) + '...');
+                        throw error;
                     }
                 }
             }

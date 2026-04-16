@@ -16,13 +16,7 @@ const History = () => {
     const [showLoginPrompt, setShowLoginPrompt] = useState(false);
 
     useEffect(() => {
-        // Check if user is authenticated
-        if (!isAuthenticated() || isGuestSession()) {
-            setShowLoginPrompt(true);
-            setLoading(false);
-            return;
-        }
-        
+        // KIOSK MODE: No authentication required, load history directly
         fetchHistory();
     }, []);
 
@@ -162,7 +156,11 @@ const History = () => {
             const analysis = await apiService.getAnalysisById(analysisId);
             
             if (analysis) {
-                // Reconstruct analysis_data from database columns
+                console.log('📊 Loading analysis from history:', analysis.id);
+                console.log('📸 Image URL:', analysis.image_url ? 'Available' : 'Missing');
+                console.log('🔬 Visualization URL:', analysis.visualization_url ? 'Available' : 'Missing');
+                
+                // Reconstruct complete analysis_data from database columns
                 const analysisData = {
                     overall_score: analysis.overall_score,
                     skin_type: analysis.skin_type,
@@ -170,27 +168,39 @@ const History = () => {
                     predicted_age: analysis.predicted_age,
                     engine: analysis.engine,
                     analysis_version: analysis.analysis_version,
-                    processing_time: analysis.processing_time_ms,
+                    processing_time: (analysis.processing_time_ms / 1000).toFixed(2),
+                    // Merge vision_analysis data
                     ...analysis.vision_analysis,
-                    ...analysis.cv_metrics
+                    // Merge cv_metrics data
+                    ...analysis.cv_metrics,
+                    // Add AI insights
+                    ai_insights: analysis.ai_insights,
+                    ai_report: analysis.ai_insights,
+                    // Add product recommendations
+                    product_recommendations: analysis.product_recommendations || []
                 };
                 
-                // Convert file path to full URL for image display
-                const imageUrl = analysis.image_url 
-                    ? `${import.meta.env.VITE_BACKEND_URL}${analysis.image_url}`
-                    : null;
+                console.log('✅ Reconstructed analysis data:', {
+                    overall_score: analysisData.overall_score,
+                    skin_type: analysisData.skin_type,
+                    has_acne: !!analysisData.acne,
+                    has_wrinkles: !!analysisData.wrinkles,
+                    has_pigmentation: !!analysisData.pigmentation,
+                    has_ai_insights: !!analysisData.ai_insights,
+                    product_count: analysisData.product_recommendations?.length || 0
+                });
                 
-                console.log('📸 Image URL for detail view:', imageUrl);
-                
-                // Navigate to result page with analysis data
+                // Navigate to result page with complete analysis data
                 navigate('/result', { 
                     state: { 
                         fromHistory: true,
-                        imageBase64: imageUrl, // Use full URL instead of base64
-                        imageUrl: imageUrl, // Also pass as imageUrl for clarity
+                        imageBase64: analysis.image_url, // Backend already returns base64
+                        imageUrl: analysis.image_url,
+                        visualizationImage: analysis.visualization_url, // Add visualization
                         resultData: analysisData,
                         aiInsights: analysis.ai_insights,
-                        analysisEngine: analysis.engine || 'AI Analysis'
+                        analysisEngine: analysis.engine || 'AI Analysis',
+                        sessionId: analysis.client_session_id // Pass session ID for sharing
                     } 
                 });
             }
@@ -214,20 +224,6 @@ const History = () => {
         return 'Perlu Perhatian';
     };
 
-    // Show login prompt for guest users
-    if (showLoginPrompt) {
-        return (
-            <div className="app-container">
-                <LoginPrompt
-                    message="Riwayat analisis hanya tersedia untuk pengguna yang sudah login. Login untuk menyimpan dan melihat riwayat analisis Anda."
-                    feature="Riwayat"
-                    onClose={() => navigate('/')}
-                />
-                <BottomNav />
-            </div>
-        );
-    }
-
     return (
         <div className="app-container">
             <div className="screen-content" style={{ padding: '24px', paddingBottom: '100px' }}>
@@ -250,7 +246,7 @@ const History = () => {
                         <ArrowLeft size={20} color="var(--text-headline)" />
                     </button>
                     <div style={{ flex: 1 }}>
-                        <h1 className="headline" style={{ fontSize: '2.5rem', margin: 0 }}>Riwayat</h1>
+                        <h1 className="headline" style={{ fontSize: '2.5rem', margin: 0 }}>Riwayat Laporan Kulit</h1>
                         <p style={{ fontSize: '0.9rem', color: 'var(--text-body)', marginTop: '4px' }}>
                             {analyses.length} analisis tersimpan
                         </p>
@@ -351,7 +347,7 @@ const History = () => {
                                     >
                                         {analysis.image_url ? (
                                             <img
-                                                src={`${import.meta.env.VITE_BACKEND_URL}${analysis.image_url}`}
+                                                src={analysis.image_url}
                                                 alt="Foto Analisis"
                                                 style={{
                                                     width: '100%',
@@ -360,12 +356,12 @@ const History = () => {
                                                 }}
                                                 onError={(e) => {
                                                     // Fallback if image fails to load
+                                                    console.warn('Failed to load image:', analysis.image_url);
                                                     e.target.style.display = 'none';
-                                                    e.target.parentElement.innerHTML = `
-                                                        <div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 2rem;">
-                                                            📸
-                                                        </div>
-                                                    `;
+                                                    const fallback = document.createElement('div');
+                                                    fallback.style.cssText = 'width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 2rem;';
+                                                    fallback.textContent = '📸';
+                                                    e.target.parentElement.appendChild(fallback);
                                                 }}
                                             />
                                         ) : (

@@ -145,6 +145,10 @@ class ApiService {
         return this.request(`/api/v2/analysis/${analysisId}`);
     }
 
+    async getAnalysisBySessionId(sessionId) {
+        return this.request(`/api/v2/analysis/session/${sessionId}`);
+    }
+
     async deleteAnalysis(analysisId) {
         return this.request(`/api/v2/analysis/${analysisId}`, {
             method: 'DELETE',
