@@ -16,7 +16,7 @@ COPY . .
 RUN chmod -R 777 /app
 
 # Expose port sesuai aplikasi Anda
-EXPOSE 8000
+EXPOSE 8003
 
 # Start command
 CMD ["node", "src/index.js"]

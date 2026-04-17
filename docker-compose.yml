@@ -25,6 +25,11 @@ services:
     build: 
       context: ./platforms/pwa
       dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-https://api-kios.cantik.ai}
+        VITE_BACKEND_URL: ${VITE_BACKEND_URL:-https://api-kios.cantik.ai}
+        VITE_PRODUCTS_API_URL: ${VITE_PRODUCTS_API_URL:-https://api-kios.cantik.ai/api/v2/products}
+        VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID}
     container_name: kios-frontend-pwa
     ports:
       - "3003:80"
