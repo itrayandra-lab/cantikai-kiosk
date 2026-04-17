@@ -163,10 +163,10 @@ const AnalysesManagement = () => {
                             imageUrl = analysis.image_url;
                         } else if (analysis.image_url.startsWith('/')) {
                             // Path starting with /
-                            imageUrl = `http://localhost:8000${analysis.image_url}`;
+                            imageUrl = `https://api-kios.cantik.ai${analysis.image_url}`;
                         } else {
                             // Relative path
-                            imageUrl = `http://localhost:8000/${analysis.image_url}`;
+                            imageUrl = `https://api-kios.cantik.ai/${analysis.image_url}`;
                         }
                     }
                     

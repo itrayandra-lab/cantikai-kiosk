@@ -56,3 +56,47 @@ body {
   padding: 24px;
   border: 1px solid rgba(255, 255, 255, 0.85);
 }
+
+/* ===== AI HTML Output Styling ===== */
+.ai-html-output h2 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-headline);
+  margin: 14px 0 6px;
+}
+.ai-html-output h3 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-headline);
+  margin: 12px 0 6px;
+}
+.ai-html-output h4 {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-headline);
+  margin: 10px 0 5px;
+}
+.ai-html-output p {
+  margin: 0 0 8px;
+}
+.ai-html-output ul,
+.ai-html-output ol {
+  padding-left: 18px;
+  margin: 5px 0 10px;
+}
+.ai-html-output li {
+  margin-bottom: 5px;
+  line-height: 1.6;
+}
+.ai-html-output strong {
+  font-weight: 600;
+  color: var(--text-headline);
+}
+.ai-html-output em {
+  font-style: italic;
+  color: var(--text-body);
+}
+.ai-html-output h2:first-child,
+.ai-html-output h3:first-child {
+  margin-top: 0;
+}

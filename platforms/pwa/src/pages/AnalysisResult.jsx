@@ -257,7 +257,9 @@ const AnalysisResult = () => {
                     setResultData(reconstructedData);
                     setAiInsights(aiInsightsData);
                     setAnalysisEngine(analysis.engine || 'AI Analysis');
-                    setVisualizationImage(analysis.visualization_url || null);
+                    // Use stored visualization, fallback to cached local image
+                    const localImage = localStorage.getItem('cantik_last_scan_image');
+                    setVisualizationImage(analysis.visualization_url || localImage || null);
                     setSessionId(urlSessionId);
                     
                     // Show all sections
@@ -281,7 +283,9 @@ const AnalysisResult = () => {
         }
         
         // Allow loading from history with imageUrl OR imageBase64
-        if (!state?.imageBase64 && !state?.imageUrl && !state?.fromHistory) {
+        // On refresh, state is lost — fallback to cached image from storage
+        const cachedImage = sessionStorage.getItem('cantik_current_scan_image') || localStorage.getItem('cantik_last_scan_image');
+        if (!state?.imageBase64 && !state?.imageUrl && !state?.fromHistory && !cachedImage) {
             navigate('/');
             return;
         }
@@ -328,6 +332,13 @@ const AnalysisResult = () => {
                 setResultData(parsed.resultData);
                 setAiInsights(parsed.aiInsights);
                 setAnalysisEngine(parsed.analysisEngine);
+
+                // Restore image from storage on refresh
+                const restoredImage = sessionStorage.getItem('cantik_current_scan_image') || localStorage.getItem('cantik_last_scan_image');
+                if (restoredImage) {
+                    setVisualizationImage(restoredImage);
+                    setShowVisualization(true);
+                }
 
                 // Show all sections immediately
                 setProgress(100);
@@ -389,12 +400,15 @@ const AnalysisResult = () => {
                 await new Promise(resolve => setTimeout(resolve, 200));
                 setProgress(10);
 
-                // Stage 2: AI Analysis (10-70%) - Direct to Gemini
-                setLoadingStage(' Menganalisis dengan AI Dermatology...');
-                setProgress(20);
+                // Stage 2: AI Analysis — progress dari polling
+                setLoadingStage('Mengirim gambar ke AI...');
+                setProgress(10);
                 
-                console.log('🚀 Starting AI-Only Analysis...');
-                const analysisResult = await analyzeSkinWithAI(state.imageBase64, skipValidation);
+                console.log('🚀 Starting AI Analysis via backend...');
+                const analysisResult = await analyzeSkinWithAI(state.imageBase64, skipValidation, ({ pct, label }) => {
+                    setProgress(Math.min(pct, 90));
+                    setLoadingStage(label);
+                });
                 
                 if (!analysisResult.success) {
                     throw new Error(analysisResult.error || 'Analysis failed');
@@ -403,9 +417,10 @@ const AnalysisResult = () => {
                 const analysisData = analysisResult.data;
                 setProgress(60);
                 
-                // Cache image for later use (WhatsApp sharing)
+                // Cache image for later use (WhatsApp sharing + refresh recovery)
                 if (state.imageBase64) {
                     localStorage.setItem('cantik_last_scan_image', state.imageBase64);
+                    sessionStorage.setItem('cantik_current_scan_image', state.imageBase64);
                     console.log('💾 Cached scan image for later use');
                 }
                 
@@ -532,12 +547,15 @@ const AnalysisResult = () => {
             await new Promise(resolve => setTimeout(resolve, 200));
             setProgress(10);
 
-            // Stage 2: AI Analysis (10-70%) - Direct to Gemini
-            setLoadingStage(' Menganalisis dengan AI Dermatology (Mode Toleran)...');
-            setProgress(20);
+            // Stage 2: AI Analysis — progress dari polling
+            setLoadingStage('Mengirim gambar ke AI...');
+            setProgress(10);
             
-            console.log('🚀 Starting AI-Only Analysis (Skip Validation)...');
-            const analysisResult = await analyzeSkinWithAI(state.imageBase64, true);
+            console.log('🚀 Starting AI Analysis (Skip Validation)...');
+            const analysisResult = await analyzeSkinWithAI(state.imageBase64, true, ({ pct, label }) => {
+                setProgress(Math.min(pct, 90));
+                setLoadingStage(label);
+            });
             
             if (!analysisResult.success) {
                 throw new Error(analysisResult.error || 'Analysis failed');
@@ -623,10 +641,10 @@ const AnalysisResult = () => {
             {/* Progress bar removed for cleaner kiosk experience */}
 
             {/* Intense Background Face Blur */}
-            {(state?.imageBase64 || state?.imageUrl) && (
+            {(state?.imageBase64 || state?.imageUrl || visualizationImage) && (
                 <div style={{
                     position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
-                    backgroundImage: `url(${state?.imageBase64 || state?.imageUrl})`,
+                    backgroundImage: `url(${state?.imageBase64 || state?.imageUrl || visualizationImage})`,
                     backgroundSize: 'cover',
                     backgroundPosition: 'center',
                     filter: 'blur(55px) brightness(1.1) saturate(1.2)',
@@ -762,69 +780,9 @@ const AnalysisResult = () => {
                                     <h3 style={{ fontSize: TYPOGRAPHY.h3, fontWeight: 600, color: 'var(--text-headline)', marginBottom: `${SPACING.element}px` }}>
                                         📊 Ringkasan Hasil
                                     </h3>
-                                    
-                                    {/* Combined Summary: Data-Driven + AI Insights */}
-                                    <p style={{ fontSize: TYPOGRAPHY.small, color: 'var(--text-body)', lineHeight: 1.6, marginBottom: `${SPACING.element}px`, fontFamily: 'var(--font-sans)' }}>
-                                        {(() => {
-                                            const score = resultData?.overall_score || 0;
-                                            const acneCount = resultData?.acne?.acne_count || 0;
-                                            const wrinkleCount = resultData?.wrinkles?.wrinkle_count || 0;
-                                            const darkSpots = resultData?.pigmentation?.dark_spot_count || 0;
-                                            const priorityConcerns = resultData?.priority_concerns || [];
-                                            
-                                            let condition = score >= 80 ? "sangat baik" : score >= 60 ? "baik" : score >= 40 ? "cukup baik" : "memerlukan perhatian";
-                                            let emoji = score >= 80 ? "✨" : score >= 60 ? "😊" : score >= 40 ? "🤔" : "⚠️";
-                                            
-                                            // Start with data-driven summary
-                                            let summary = `${emoji} Kulit Anda dalam kondisi ${condition} dengan skor ${score}/100. `;
-                                            
-                                            const issues = [];
-                                            if (acneCount > 0) issues.push(`${acneCount} jerawat`);
-                                            if (wrinkleCount > 0) issues.push(`${wrinkleCount} garis halus`);
-                                            if (darkSpots > 0) issues.push(`${darkSpots} bintik gelap`);
-                                            
-                                            if (issues.length > 0) {
-                                                summary += `Terdeteksi ${issues.join(', ')}. `;
-                                            }
-                                            
-                                            if (priorityConcerns.length > 0) {
-                                                const concerns = priorityConcerns.map(c => c.concern).join(', ');
-                                                const zones = priorityConcerns[0]?.zones?.join(', ') || 'wajah';
-                                                summary += `Prioritas: ${concerns} di ${zones}. `;
-                                            }
-                                            
-                                            // Add AI summary if available
-                                            if (aiInsights?.summary) {
-                                                summary += '\n\n' + aiInsights.summary;
-                                            }
-                                            
-                                            return summary;
-                                        })()}
+                                    <p style={{ fontSize: TYPOGRAPHY.body, color: 'var(--text-body)', lineHeight: 1.7, margin: 0 }}>
+                                        {resultData?.summary || aiInsights?.summary || '—'}
                                     </p>
-                                    
-                                    {/* Breakdown Metrics - INLINE */}
-                                    <div style={{ display: 'flex', gap: `${SPACING.element}px`, flexWrap: 'wrap', marginTop: `${SPACING.element}px` }}>
-                                        <div style={{ background: 'rgba(255,255,255,0.6)', borderRadius: '10px', padding: '8px 12px', flex: '1 1 auto', minWidth: '120px' }}>
-                                            <p style={{ fontSize: TYPOGRAPHY.tiny, color: 'var(--text-body)', marginBottom: '2px' }}>Jenis Kulit</p>
-                                            <p style={{ fontSize: TYPOGRAPHY.small, fontWeight: 600, color: 'var(--text-headline)', margin: 0 }}>{resultData?.skin_type || "Normal"}</p>
-                                        </div>
-                                    </div>
-                                    
-                                    {/* Priority Concerns - COMPACT */}
-                                    {resultData?.priority_concerns && resultData.priority_concerns.length > 0 && (
-                                        <div style={{ marginTop: `${SPACING.element}px`, padding: '10px 12px', background: 'rgba(230, 0, 126, 0.06)', borderRadius: '10px', borderLeft: '3px solid var(--primary-color)' }}>
-                                            <p style={{ fontSize: TYPOGRAPHY.tiny, fontWeight: 600, color: 'var(--text-headline)', marginBottom: '4px' }}>
-                                                🎯 Prioritas:
-                                            </p>
-                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                                                {resultData.priority_concerns.map((concern, idx) => (
-                                                    <span key={idx} style={{ fontSize: TYPOGRAPHY.tiny, color: 'var(--text-body)', background: 'rgba(255,255,255,0.5)', padding: '4px 8px', borderRadius: '6px' }}>
-                                                        {concern.concern} ({concern.severity})
-                                                    </span>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
                                 </div>
                             </div>
                         )}
@@ -864,8 +822,8 @@ const AnalysisResult = () => {
                                     </div>
                                 )}
 
-                                {/* Stage 3: 15 Analysis Modes - TEXT BASED */}
-                                {showMetrics && resultData && resultData.analysis_modes && (
+                                {/* Stage 3: 15 Analysis Modes - HIDDEN (tidak dipakai untuk n8n response) */}
+                                {false && showMetrics && resultData && resultData.analysis_modes && (
                                     <div style={{ animation: 'etherealFade 0.6s ease', marginBottom: `${SPACING.section}px` }}>
                                         <h3 style={{ fontSize: TYPOGRAPHY.h3, fontWeight: 600, color: 'var(--text-headline)', marginBottom: `${SPACING.element}px`, textShadow: '0 2px 10px rgba(255,255,255,0.8)' }}>
                                             🔬 15 Analysis Modes
@@ -947,7 +905,8 @@ const AnalysisResult = () => {
                                 )}
 
                                 {/* Stage 4: Full Analysis Data */}
-                                {showMetrics && resultData && (
+                                {/* Analisis Detail Kulit metric cards - HIDDEN */}
+                                {false && showMetrics && resultData && (
                                     <div style={{ animation: 'etherealFade 0.6s ease' }}>
                                         {/* Analysis Metrics Grid */}
                                         <h3 style={{ fontSize: TYPOGRAPHY.h3, fontWeight: 600, color: 'var(--text-headline)', marginBottom: `${SPACING.element}px`, textShadow: '0 2px 10px rgba(255,255,255,0.8)' }}>
@@ -1082,6 +1041,8 @@ const AnalysisResult = () => {
                                         </div>
 
                                         {/* Additional Info - Integrated (No Title, No Usia Prediksi, No Engine) */}
+                                        {/* Jenis Kulit + Warna Kulit - HIDDEN (sudah ada di Ringkasan Hasil) */}
+                                        {false && (
                                         <div className="card-glass" style={{ padding: '20px', marginTop: '16px' }}>
                                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                                                 {/* Only show Jenis Kulit and Warna Kulit */}
@@ -1119,10 +1080,9 @@ const AnalysisResult = () => {
                                                 </div>
                                             )}
                                         </div>
+                                        )}
                                     </div>
                                 )}
-
-                                {/* Stage 3: AI Insights - COMPREHENSIVE DISPLAY */}
                                 {showProducts && aiInsights && (
                                     <div style={{ animation: 'etherealFade 0.6s ease', marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                         
@@ -1204,6 +1164,20 @@ const AnalysisResult = () => {
                                                         </ul>
                                                     </div>
                                                 )}
+                                            </div>
+                                        )}
+
+                                        {/* HTML Output dari n8n/Gemini */}
+                                        {aiInsights.output && (
+                                            <div className="card-glass" style={{ padding: '16px' }}>
+                                                <h4 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-headline)', marginBottom: '12px', fontFamily: 'var(--font-sans)' }}>
+                                                    🔬 Analisis Detail
+                                                </h4>
+                                                <div
+                                                    className="ai-html-output"
+                                                    style={{ fontSize: '0.85rem', color: 'var(--text-body)', lineHeight: 1.7, fontFamily: 'var(--font-sans)' }}
+                                                    dangerouslySetInnerHTML={{ __html: aiInsights.output }}
+                                                />
                                             </div>
                                         )}
 
@@ -1456,7 +1430,7 @@ const AnalysisResult = () => {
                                 )}
 
                                 {/* Stage 4: WhatsApp Form & Send Button - Glassmorphism Style */}
-                                {showProducts && (
+                                {showProducts && !urlSessionId && (
                                     <div style={{ animation: 'etherealFade 0.6s ease', marginTop: '24px' }}>
                                         {/* Glassmorphism Card Container */}
                                         <div style={{
@@ -1688,119 +1662,61 @@ const AnalysisResult = () => {
                                                         const resultUrl = `${window.location.origin}/analysis/${sessionId}`;
                                                         console.log('🔗 Generated result URL:', resultUrl);
                                                         
-                                                        // Prepare SUPER DETAILED WhatsApp message
-                                                        const acneScore = resultData?.acne?.acne_score || 0;
-                                                        const wrinkleScore = resultData?.wrinkles ? (100 - (resultData.wrinkles.wrinkle_severity || 0)) : 0;
-                                                        const pigmentationScore = resultData?.pigmentation?.uniformity_score || 0;
-                                                        const hydrationScore = resultData?.hydration?.hydration_level || 0;
-                                                        const poreScore = resultData?.pores?.pore_score || 0;
-                                                        
+                                                        // Build concise WhatsApp message
                                                         const priorityConcerns = resultData?.priority_concerns || [];
-                                                        const concernsList = priorityConcerns.length > 0 
-                                                            ? priorityConcerns.map((c, i) => `${i + 1}. ${c.concern} (${c.severity})`).join('\n')
-                                                            : 'Tidak ada concern prioritas';
-                                                        
-                                                        const message = `🌸 *HASIL ANALISIS KULIT LENGKAP* 🌸
+                                                        const concernsList = priorityConcerns.length > 0
+                                                            ? priorityConcerns.map((c, i) => `${i + 1}. *${c.concern}* _${c.severity}_`).join('\n')
+                                                            : '_Tidak ada concern prioritas_';
 
-Halo ${userName}! 👋
+                                                        const products = aiInsights?.product_recommendations || resultData?.product_recommendations || [];
+                                                        const productList = products.length > 0
+                                                            ? products.map((p) => `*${p.name}*${p.brand ? ` - ${p.brand}` : ''}\n_${p.category || ''}_\n${p.reason || p.resume || ''}`).join('\n\n')
+                                                            : '';
 
-Terima kasih telah melakukan analisis kulit di Cantik.ai. Berikut adalah hasil lengkap analisis Anda:
+                                                        const chatId = `${normalizedWA.replace('+', '')}@c.us`;
 
-━━━━━━━━━━━━━━━━━━━━
-📊 *RINGKASAN KESEHATAN KULIT*
-━━━━━━━━━━━━━━━━━━━━
+                                                        const message = `*Hasil Analisis Kulit - Cantik.ai*
 
-✨ Skor Kesehatan: *${resultData?.overall_score || 0}/100*
-🔬 Jenis Kulit: *${resultData?.skin_type || 'Unknown'}*
-🎯 Fitzpatrick Type: *${resultData?.fitzpatrick_type || 'III'}*
-👤 Usia Prediksi: *${resultData?.predicted_age || 25} tahun*
+Halo *${userName}* 😊,
 
-━━━━━━━━━━━━━━━━━━━━
-🔍 *ANALISIS DETAIL 8 PARAMETER*
-━━━━━━━━━━━━━━━━━━━━
+*Ringkasan*
+Skor: *${resultData?.overall_score || 0}/100*
+Jenis Kulit: _${resultData?.skin_type || 'Unknown'}_
 
-1️⃣ Jerawat (Acne): ${acneScore}/100
-   ${resultData?.acne?.severity || 'Normal'} • ${resultData?.acne?.acne_count || 0} jerawat terdeteksi
+${aiInsights?.summary || ''}
 
-2️⃣ Kerutan (Wrinkles): ${wrinkleScore}/100
-   ${resultData?.wrinkles?.severity || 'Minimal'} • ${resultData?.wrinkles?.wrinkle_count || 0} garis halus
-
-3️⃣ Pigmentasi: ${pigmentationScore}/100
-   ${resultData?.pigmentation?.severity || 'Ringan'} • ${resultData?.pigmentation?.dark_spot_count || 0} bintik gelap
-
-4️⃣ Hidrasi: ${hydrationScore}/100
-   Status: ${resultData?.hydration?.status || 'Normal'}
-
-5️⃣ Pori-pori: ${poreScore}/100
-   ${resultData?.pores?.visibility || 'Sedang'} • ${resultData?.pores?.enlarged_count || 0} pori membesar
-
-6️⃣ Berminyak: ${100 - (resultData?.oiliness?.oiliness_score || 0)}/100
-   Level Sebum: ${resultData?.oiliness?.sebum_level || 'Sedang'}
-
-7️⃣ Tekstur: ${resultData?.texture?.texture_score || 0}/100
-   Kelembutan: ${resultData?.texture?.smoothness || 'Halus'}
-
-8️⃣ Area Mata: ${resultData?.eye_area?.firmness || 0}/100
-   Lingkaran Mata: ${resultData?.eye_area?.dark_circles || 0}%
-
-━━━━━━━━━━━━━━━━━━━━
-⚠️ *PRIORITAS PERHATIAN*
-━━━━━━━━━━━━━━━━━━━━
-
+*Masalah Utama*
 ${concernsList}
 
-━━━━━━━━━━━━━━━━━━━━
-💡 *REKOMENDASI AI DERMATOLOGIST*
-━━━━━━━━━━━━━━━━━━━━
+Lihat hasil lengkap:
+${resultUrl}`;
 
-${aiInsights?.summary || 'Jaga rutinitas skincare konsisten untuk hasil optimal.'}
+                                                        const sendMsg = async (text) => {
+                                                            const res = await fetch('https://wa.raycorpgroup.com/api/sendText', {
+                                                                method: 'POST',
+                                                                headers: {
+                                                                    'Content-Type': 'application/json',
+                                                                    'X-Api-Key': '33a73dbf8cf04b26ae50eb9d2d778e25'
+                                                                },
+                                                                body: JSON.stringify({ chatId, text, session: 'default' })
+                                                            });
+                                                            if (!res.ok) {
+                                                                const body = await res.json();
+                                                                throw new Error(body.message || 'Failed to send WhatsApp message');
+                                                            }
+                                                            return res.json();
+                                                        };
 
-━━━━━━━━━━━━━━━━━━━━
-🔗 *LIHAT HASIL SUPER LENGKAP*
-━━━━━━━━━━━━━━━━━━━━
-
-Klik link di bawah untuk melihat:
-✅ Visualisasi 15 Mode Analisis
-✅ Rekomendasi Produk Personal
-✅ Rutinitas Perawatan Lengkap
-✅ Tips & Saran dari AI Expert
-✅ Foto Before & Analysis
-
-👉 ${resultUrl}
-
-━━━━━━━━━━━━━━━━━━━━
-
-Simpan link ini untuk referensi Anda! 💖
-
-🎓 *Gabung dengan komunitas FREE dengan pakar kosmetik!*
-Dapatkan tips skincare, konsultasi gratis, dan update produk terbaru.
-👉 [Link komunitas akan segera hadir]
-
-_Powered by Cantik.ai - AI Skin Analysis_`;
-                                                        
                                                         console.log('📱 Sending to WhatsApp API...');
-                                                        console.log('📞 ChatId:', `${normalizedWA.replace('+', '')}@c.us`);
                                                         
                                                         // Send to WhatsApp API
-                                                        const whatsappResponse = await fetch('https://wa.raycorpgroup.com/api/sendText', {
-                                                            method: 'POST',
-                                                            headers: {
-                                                                'Content-Type': 'application/json',
-                                                                'X-Api-Key': '33a73dbf8cf04b26ae50eb9d2d778e25'
-                                                            },
-                                                            body: JSON.stringify({
-                                                                chatId: `${normalizedWA.replace('+', '')}@c.us`,
-                                                                text: message,
-                                                                session: 'default'
-                                                            })
-                                                        });
-                                                        
-                                                        const responseData = await whatsappResponse.json();
-                                                        console.log('📱 WhatsApp API Response:', responseData);
-                                                        
-                                                        if (!whatsappResponse.ok) {
-                                                            console.error('❌ WhatsApp API Error:', responseData);
-                                                            throw new Error(responseData.message || 'Failed to send WhatsApp message');
+                                                        const whatsappResponse = await sendMsg(message);
+                                                        console.log('📱 WhatsApp API Response:', whatsappResponse);
+
+                                                        // Send product recommendations as separate bubble
+                                                        if (productList) {
+                                                            await new Promise(r => setTimeout(r, 800));
+                                                            await sendMsg(`*Rekomendasi Produk*\n\n${productList}`);
                                                         }
                                                         
                                                         console.log('✅ WhatsApp message sent successfully');

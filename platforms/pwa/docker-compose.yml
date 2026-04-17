@@ -4,12 +4,12 @@ services:
   # --- BACKEND API ---
   backend:
     build: ./backend
-    container_name: cantik-backend
+    container_name: kios-backend
     restart: unless-stopped
     network_mode: "host" 
     volumes:
       # Jalur VPS diarahkan ke folder backend/uploads agar sesuai struktur baru Anda
-      - /www/wwwroot/skin-analyzer.cantik.ai/backend/uploads:/app/uploads
+      - /www/wwwroot/kios-skin-analyzer.cantik.ai/backend/uploads:/app/uploads
     env_file:
       - ./backend/.env
 
@@ -18,8 +18,8 @@ services:
     build: 
       context: ./platforms/pwa
       dockerfile: Dockerfile
-    container_name: cantik-fe-pwa
+    container_name: kios-frontend-pwa
     # Tetap menggunakan port 3001 agar bisa di-proxy oleh aaPanel
     ports:
-      - "3001:80"
+      - "3002:80"
     restart: always

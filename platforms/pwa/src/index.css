@@ -230,3 +230,47 @@ body:has([data-admin-page]) #root {
     transform: rotate(360deg);
   }
 }
+
+/* ===== AI HTML Output Styling ===== */
+.ai-html-output h2 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-headline);
+  margin: 16px 0 8px;
+}
+.ai-html-output h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-headline);
+  margin: 14px 0 6px;
+}
+.ai-html-output h4 {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-headline);
+  margin: 12px 0 6px;
+}
+.ai-html-output p {
+  margin: 0 0 10px;
+}
+.ai-html-output ul,
+.ai-html-output ol {
+  padding-left: 20px;
+  margin: 6px 0 12px;
+}
+.ai-html-output li {
+  margin-bottom: 6px;
+  line-height: 1.6;
+}
+.ai-html-output strong {
+  font-weight: 600;
+  color: var(--text-headline);
+}
+.ai-html-output em {
+  font-style: italic;
+  color: var(--text-body);
+}
+.ai-html-output h2:first-child,
+.ai-html-output h3:first-child {
+  margin-top: 0;
+}

@@ -190,19 +190,24 @@ const History = () => {
                     product_count: analysisData.product_recommendations?.length || 0
                 });
                 
-                // Navigate to result page with complete analysis data
-                navigate('/result', { 
-                    state: { 
-                        fromHistory: true,
-                        imageBase64: analysis.image_url, // Backend already returns base64
-                        imageUrl: analysis.image_url,
-                        visualizationImage: analysis.visualization_url, // Add visualization
-                        resultData: analysisData,
-                        aiInsights: analysis.ai_insights,
-                        analysisEngine: analysis.engine || 'AI Analysis',
-                        sessionId: analysis.client_session_id // Pass session ID for sharing
-                    } 
-                });
+                // Navigate to shared analysis URL using session ID
+                const sessionId = analysis.client_session_id;
+                if (sessionId) {
+                    navigate(`/analysis/${sessionId}`);
+                } else {
+                    navigate('/result', { 
+                        state: { 
+                            fromHistory: true,
+                            imageBase64: analysis.image_url,
+                            imageUrl: analysis.image_url,
+                            visualizationImage: analysis.visualization_url,
+                            resultData: analysisData,
+                            aiInsights: analysis.ai_insights,
+                            analysisEngine: analysis.engine || 'AI Analysis',
+                            sessionId: analysis.client_session_id
+                        } 
+                    });
+                }
             }
         } catch (err) {
             console.error('Error loading analysis:', err);

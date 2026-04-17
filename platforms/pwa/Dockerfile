@@ -1,10 +1,10 @@
 # Stage 1: Build
-FROM node:20-slim AS build-stage
+FROM node:20-alpine AS build-stage
 WORKDIR /app
 COPY package*.json ./
-RUN npm install
+RUN npm ci
 COPY . .
-RUN npm run build
+RUN ./node_modules/.bin/vite build
 
 # Stage 2: Serve dengan Nginx
 FROM nginx:stable-alpine

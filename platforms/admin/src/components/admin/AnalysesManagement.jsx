@@ -222,79 +222,139 @@ const AnalysesManagement = () => {
             )}
 
             {showDetail && selectedAnalysis && (
-                <div style={overlayStyle}>
-                    <div style={{ ...cardStyle, width: '100%', maxWidth: '860px', maxHeight: '90vh', overflowY: 'auto', padding: '20px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', gap: '10px' }}>
+                <div style={overlayStyle} onClick={(e) => e.target === e.currentTarget && setShowDetail(false)}>
+                    <div style={{ ...cardStyle, width: '100%', maxWidth: '900px', maxHeight: '92vh', overflowY: 'auto', padding: '28px' }}>
+                        {/* Header */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
                             <div>
-                                <h3 style={{ color: 'var(--text-headline)', fontFamily: 'var(--font-serif)' }}>
+                                <h3 style={{ color: 'var(--text-headline)', fontFamily: 'var(--font-serif)', margin: '0 0 4px' }}>
                                     Analysis #{selectedAnalysis.id}
                                 </h3>
-                                <p style={{ color: 'var(--text-body)', fontSize: '0.9rem' }}>
+                                <p style={{ color: 'var(--text-body)', fontSize: '0.85rem', margin: 0 }}>
                                     {selectedAnalysis.username || selectedAnalysis.user_email || 'Unknown'} • {new Date(selectedAnalysis.created_at).toLocaleString('id-ID')}
                                 </p>
+                                {selectedAnalysis.client_session_id && (
+                                    <p style={{ color: 'var(--text-body)', fontSize: '0.75rem', margin: '4px 0 0', fontFamily: 'monospace' }}>
+                                        Session: {selectedAnalysis.client_session_id}
+                                    </p>
+                                )}
                             </div>
-                            <button
-                                onClick={() => setShowDetail(false)}
-                                style={{
-                                    border: '1px solid rgba(157,90,118,0.25)',
-                                    borderRadius: '9px',
-                                    padding: '8px 12px',
-                                    background: 'transparent',
-                                    color: 'var(--text-body)',
-                                    cursor: 'pointer'
-                                }}
-                            >
-                                Close
+                            <button onClick={() => setShowDetail(false)} style={{ border: '1px solid rgba(157,90,118,0.25)', borderRadius: '9px', padding: '8px 14px', background: 'transparent', color: 'var(--text-body)', cursor: 'pointer', flexShrink: 0 }}>
+                                ✕ Tutup
                             </button>
                         </div>
 
+                        {/* Customer Info */}
+                        {(selectedAnalysis.customer_name || selectedAnalysis.customer_whatsapp || selectedAnalysis.customer_email) && (
+                            <div style={{ ...cardStyle, padding: '14px', marginBottom: '16px', background: 'rgba(157,90,118,0.05)' }}>
+                                <p style={{ fontWeight: 600, color: 'var(--text-headline)', marginBottom: '8px', fontSize: '0.85rem' }}>👤 Info Customer</p>
+                                <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', fontSize: '0.85rem', color: 'var(--text-body)' }}>
+                                    {selectedAnalysis.customer_name && <span><strong>Nama:</strong> {selectedAnalysis.customer_name}</span>}
+                                    {selectedAnalysis.customer_whatsapp && <span><strong>WA:</strong> {selectedAnalysis.customer_whatsapp}</span>}
+                                    {selectedAnalysis.customer_email && <span><strong>Email:</strong> {selectedAnalysis.customer_email}</span>}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Images */}
                         {(selectedAnalysis.image_url || selectedAnalysis.visualization_url) && (
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: selectedAnalysis.visualization_url ? '1fr 1fr' : '1fr', gap: '12px', marginBottom: '16px' }}>
                                 {selectedAnalysis.image_url && (
-                                    <img
-                                        src={selectedAnalysis.image_url}
-                                        alt="face"
-                                        style={{ width: '100%', borderRadius: '12px', border: '1px solid rgba(157,90,118,0.2)' }}
-                                    />
+                                    <div>
+                                        <p style={{ fontSize: '0.75rem', color: 'var(--text-body)', marginBottom: '6px' }}>Foto Asli</p>
+                                        <img src={selectedAnalysis.image_url} alt="face" style={{ width: '100%', borderRadius: '12px', border: '1px solid rgba(157,90,118,0.2)' }} />
+                                    </div>
                                 )}
                                 {selectedAnalysis.visualization_url && (
-                                    <img
-                                        src={selectedAnalysis.visualization_url}
-                                        alt="visualization"
-                                        style={{ width: '100%', borderRadius: '12px', border: '1px solid rgba(157,90,118,0.2)' }}
-                                    />
+                                    <div>
+                                        <p style={{ fontSize: '0.75rem', color: 'var(--text-body)', marginBottom: '6px' }}>Visualisasi</p>
+                                        <img src={selectedAnalysis.visualization_url} alt="visualization" style={{ width: '100%', borderRadius: '12px', border: '1px solid rgba(157,90,118,0.2)' }} />
+                                    </div>
                                 )}
                             </div>
                         )}
 
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '12px' }}>
-                            <div style={{ ...cardStyle, padding: '12px' }}>
-                                <p style={{ color: 'var(--text-body)', fontSize: '0.8rem' }}>Overall score</p>
-                                <p style={{ color: getScoreColor(Number(selectedAnalysis.overall_score || 0)), fontWeight: 700, fontSize: '1.2rem' }}>
-                                    {Number(selectedAnalysis.overall_score || 0)}%
-                                </p>
-                            </div>
-                            <div style={{ ...cardStyle, padding: '12px' }}>
-                                <p style={{ color: 'var(--text-body)', fontSize: '0.8rem' }}>Skin type</p>
-                                <p style={{ color: 'var(--text-headline)', fontWeight: 700, fontSize: '1rem' }}>
-                                    {selectedAnalysis.skin_type || '-'}
-                                </p>
-                            </div>
-                            <div style={{ ...cardStyle, padding: '12px' }}>
-                                <p style={{ color: 'var(--text-body)', fontSize: '0.8rem' }}>Predicted age</p>
-                                <p style={{ color: 'var(--text-headline)', fontWeight: 700, fontSize: '1rem' }}>
-                                    {selectedAnalysis.predicted_age || '-'}
-                                </p>
-                            </div>
+                        {/* Score Cards */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginBottom: '16px' }}>
+                            {[
+                                { label: 'Skor', value: `${Number(selectedAnalysis.overall_score || 0)}%`, color: getScoreColor(Number(selectedAnalysis.overall_score || 0)) },
+                                { label: 'Jenis Kulit', value: selectedAnalysis.skin_type || '-' },
+                                { label: 'Fitzpatrick', value: selectedAnalysis.fitzpatrick_type || '-' },
+                                { label: 'Usia Prediksi', value: selectedAnalysis.predicted_age ? `${selectedAnalysis.predicted_age} thn` : '-' },
+                            ].map((item) => (
+                                <div key={item.label} style={{ ...cardStyle, padding: '12px', textAlign: 'center' }}>
+                                    <p style={{ color: 'var(--text-body)', fontSize: '0.75rem', margin: '0 0 4px' }}>{item.label}</p>
+                                    <p style={{ color: item.color || 'var(--text-headline)', fontWeight: 700, fontSize: '1rem', margin: 0 }}>{item.value}</p>
+                                </div>
+                            ))}
                         </div>
 
-                        <div style={{ ...cardStyle, padding: '12px' }}>
-                            <p style={{ color: 'var(--text-body)', fontSize: '0.85rem', marginBottom: '6px' }}>AI Insights</p>
-                            <pre style={{ whiteSpace: 'pre-wrap', margin: 0, color: 'var(--text-headline)', fontSize: '0.85rem', fontFamily: 'var(--font-sans)' }}>
-                                {typeof selectedAnalysis.ai_insights === 'object'
-                                    ? JSON.stringify(selectedAnalysis.ai_insights, null, 2)
-                                    : (selectedAnalysis.ai_insights || '-')}
-                            </pre>
+                        {/* Summary */}
+                        {selectedAnalysis.ai_insights?.summary && (
+                            <div style={{ ...cardStyle, padding: '14px', marginBottom: '16px' }}>
+                                <p style={{ fontWeight: 600, color: 'var(--text-headline)', marginBottom: '8px', fontSize: '0.85rem' }}>📝 Ringkasan</p>
+                                <p style={{ color: 'var(--text-body)', fontSize: '0.85rem', lineHeight: 1.6, margin: 0 }}>
+                                    {selectedAnalysis.ai_insights.summary}
+                                </p>
+                            </div>
+                        )}
+
+                        {/* Detected Issues */}
+                        {selectedAnalysis.ai_insights?.ai_metrics?.detected_issues?.length > 0 && (
+                            <div style={{ ...cardStyle, padding: '14px', marginBottom: '16px' }}>
+                                <p style={{ fontWeight: 600, color: 'var(--text-headline)', marginBottom: '10px', fontSize: '0.85rem' }}>⚠️ Masalah Terdeteksi</p>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    {selectedAnalysis.ai_insights.ai_metrics.detected_issues.map((issue, i) => (
+                                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'rgba(157,90,118,0.05)', borderRadius: '8px', fontSize: '0.85rem' }}>
+                                            <span style={{ color: 'var(--text-headline)', fontWeight: 500 }}>{issue.issue}</span>
+                                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                <span style={{ color: 'var(--text-body)', fontSize: '0.75rem' }}>{issue.location}</span>
+                                                <span style={{ padding: '2px 8px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 600, background: issue.severity?.toLowerCase().includes('parah') ? 'rgba(220,38,38,0.1)' : 'rgba(234,88,12,0.1)', color: issue.severity?.toLowerCase().includes('parah') ? '#dc2626' : '#ea580c' }}>
+                                                    {issue.severity}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* HTML Output */}
+                        {selectedAnalysis.ai_insights?.output && (
+                            <div style={{ ...cardStyle, padding: '14px', marginBottom: '16px' }}>
+                                <p style={{ fontWeight: 600, color: 'var(--text-headline)', marginBottom: '10px', fontSize: '0.85rem' }}>🔬 Analisis Detail</p>
+                                <div
+                                    className="ai-html-output"
+                                    style={{ fontSize: '0.85rem', color: 'var(--text-body)', lineHeight: 1.7 }}
+                                    dangerouslySetInnerHTML={{ __html: selectedAnalysis.ai_insights.output }}
+                                />
+                            </div>
+                        )}
+
+                        {/* Recommended Products */}
+                        {selectedAnalysis.ai_insights?.recommended_products?.length > 0 && (
+                            <div style={{ ...cardStyle, padding: '14px', marginBottom: '16px' }}>
+                                <p style={{ fontWeight: 600, color: 'var(--text-headline)', marginBottom: '10px', fontSize: '0.85rem' }}>🛍️ Rekomendasi Produk</p>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                    {selectedAnalysis.ai_insights.recommended_products.map((p, i) => (
+                                        <div key={i} style={{ padding: '12px', background: 'rgba(157,90,118,0.05)', borderRadius: '10px', border: '1px solid rgba(157,90,118,0.1)' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '4px' }}>
+                                                <span style={{ fontWeight: 600, color: 'var(--text-headline)', fontSize: '0.9rem' }}>{p.name}</span>
+                                                <span style={{ fontSize: '0.75rem', color: 'var(--primary-color)', background: 'rgba(157,90,118,0.1)', padding: '2px 8px', borderRadius: '6px', marginLeft: '8px', flexShrink: 0 }}>{p.category}</span>
+                                            </div>
+                                            {p.brand && <p style={{ fontSize: '0.8rem', color: 'var(--text-body)', margin: '0 0 4px', fontStyle: 'italic' }}>{p.brand}</p>}
+                                            {p.resume && <p style={{ fontSize: '0.82rem', color: 'var(--text-body)', margin: 0, lineHeight: 1.5 }}>{p.resume}</p>}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Meta info */}
+                        <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', fontSize: '0.78rem', color: 'var(--text-body)', paddingTop: '8px', borderTop: '1px solid rgba(157,90,118,0.1)' }}>
+                            <span>Engine: {selectedAnalysis.engine || '-'}</span>
+                            <span>Version: {selectedAnalysis.analysis_version || '-'}</span>
+                            {selectedAnalysis.processing_time_ms && <span>Processing: {selectedAnalysis.processing_time_ms}ms</span>}
                         </div>
                     </div>
                 </div>

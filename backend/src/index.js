@@ -31,8 +31,8 @@ const JWT_SECRET = process.env.JWT_SECRET || 'cantik-ai-dev-secret-change-me';
 
 // CORS configuration
 const allowedOrigins = [
-  'https://skin-analyzer.cantik.ai',
-  'https://api.cantik.ai',
+  'https://kios-skin-analyzer.cantik.ai',
+  'https://api-kios.cantik.ai',
   // Development origins
   'http://localhost:5173',
   'http://localhost:5174', 
@@ -200,6 +200,8 @@ const adminLoginFailureTracker = new Map();
 
 // Admin allowed origins - allow localhost and common development ports
 const ADMIN_ALLOWED_ORIGINS = new Set([
+    'https://kios-skin-analyzer.cantik.ai',
+    'https://api-kios.cantik.ai',
     'http://localhost:5173',
     'http://localhost:3000',
     'http://localhost:8080',
@@ -3070,6 +3072,218 @@ app.put('/api/v2/admin/appointments/:id', requireAdminAuth, async (req, res) => 
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
+});
+
+// ==================== PWA SKIN ANALYSIS VIA N8N (ASYNC + POLLING) ====================
+
+const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL || 'http://localhost:5678/webhook-test/aiskinanalyzer';
+const BE_CALLBACK_URL = process.env.BE_CALLBACK_URL || 'http://localhost:8000/api/v2/analyze/callback';
+
+// In-memory store untuk hasil analisis (bisa diganti Redis/DB kalau perlu persist)
+const analysisResultStore = new Map(); // session_id → { status, stage, data, created_at }
+
+// Cleanup store setiap 30 menit — hapus entry > 1 jam
+setInterval(() => {
+    const oneHourAgo = Date.now() - 3600000;
+    for (const [key, val] of analysisResultStore.entries()) {
+        if (val.created_at < oneHourAgo) analysisResultStore.delete(key);
+    }
+}, 1800000);
+
+// POST /api/v2/analyze — langsung return session_id, proses async
+app.post('/api/v2/analyze', async (req, res) => {
+    const { image_base64, image_url, instruction, session_id, user_id } = req.body || {};
+
+    const base64 = String(image_base64 || '').trim();
+    const url = String(image_url || '').trim();
+
+    if (!base64 && !url) {
+        return res.status(400).json({ error: 'image_base64 atau image_url wajib diisi' });
+    }
+
+    const sessionId = String(session_id || ('sess-' + Date.now())).trim();
+
+    // Simpan status awal
+    analysisResultStore.set(sessionId, {
+        status: 'processing',
+        stage: 'Mengirim gambar ke AI...',
+        data: null,
+        created_at: Date.now()
+    });
+
+    // Return langsung ke FE
+    res.json({ success: true, session_id: sessionId, status: 'processing' });
+
+    // Kalau ada base64 → simpan ke disk → pakai URL publik, bukan kirim base64 ke n8n
+    let finalImageUrl = url;
+    if (base64) {
+        const isLocalhost = /localhost|127\.0\.0\.1/.test(KIOSK_PUBLIC_BASE_URL);
+        if (isLocalhost) {
+            // Dev mode: skip simpan, pakai fallback URL publik
+            finalImageUrl = 'https://evamuliaclinic.com/wp-content/uploads/2023/10/cystic-acne-nodular-acne-1.jpg';
+            console.log('🔧 Dev mode (localhost) — pakai fallback image URL:', finalImageUrl);
+        } else {
+            try {
+                const uid = String(user_id || 'pwa').replace(/[^a-z0-9_-]/gi, '') || 'pwa';
+                const savedPath = saveImageToFile(base64, `analyze_${uid}_${Date.now()}`, 'pwa');
+                finalImageUrl = `${KIOSK_PUBLIC_BASE_URL}/${savedPath.replace(/^\/+/, '')}`;
+                console.log('💾 Image saved:', savedPath);
+                console.log('🌐 Public URL :', finalImageUrl);
+            } catch (saveErr) {
+                console.error('⚠️ Image save failed:', saveErr.message);
+            }
+        }
+    }
+
+    // Kirim URL ke n8n (bukan base64)
+    const imageUrlForN8n = finalImageUrl || null;
+    const imageBase64ForN8n = (!finalImageUrl && base64) ? base64 : null;
+    console.log('🔗 n8n — url:', imageUrlForN8n ? imageUrlForN8n : 'null', '| b64:', imageBase64ForN8n ? `${Math.round(imageBase64ForN8n.length/1024)}KB` : 'null');
+
+    // Proses async — forward ke n8n
+    const n8nPayload = {
+        image_url: imageUrlForN8n,
+        image_base64: imageBase64ForN8n,
+        instruction: String(instruction || 'Analisa kondisi kulit.').trim(),
+        session_id: sessionId,
+        user_id: String(user_id || '').trim() || null
+    };
+
+    console.log('🔗 Async forward to n8n, session:', sessionId);
+
+    const n8nAbort = new AbortController();
+    const n8nTimeout = setTimeout(() => n8nAbort.abort(), 270000); // 4.5 menit timeout
+
+    fetch(N8N_WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(n8nPayload),
+        signal: n8nAbort.signal
+    })
+    .then(async n8nRes => {
+        clearTimeout(n8nTimeout);
+        const rawText = await n8nRes.text();
+        console.log('📨 n8n response status:', n8nRes.status, '| session:', sessionId);
+
+        if (!n8nRes.ok) {
+            analysisResultStore.set(sessionId, {
+                status: 'error',
+                stage: 'n8n error',
+                error: rawText.slice(0, 200),
+                data: null,
+                created_at: Date.now()
+            });
+            return;
+        }
+
+        let n8nData;
+        try { n8nData = JSON.parse(rawText); } catch { n8nData = { raw: rawText }; }
+
+        // Simpan ke tabel analyses
+        let savedId = null;
+        try {
+            const m = n8nData.ai_metrics || {};
+            const scores = m.scores || {};
+            // Truncate fields yang bisa melebihi column limit
+            const truncate = (val, len=50) => val ? String(val).slice(0, len) : null;
+            const saveResult = await dbRun(`
+                INSERT INTO analyses (
+                    user_id, image_url, visualization_url, overall_score, skin_type,
+                    fitzpatrick_type, predicted_age, analysis_version, engine, processing_time_ms,
+                    cv_metrics, vision_analysis, ai_insights, client_session_id, product_recommendations
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `, [
+                n8nPayload.user_id || null,
+                truncate(n8nPayload.image_url, 500) || '',
+                '',
+                n8nData.overall_score || parseInt(String(n8nData.skin_health_percentage || n8nData.ai_metrics?.skin_health_percentage || '0').replace('%','').trim()) || 0,
+                truncate(m.skin_type || n8nData.ai_metrics?.skin_type || 'Unknown', 50),
+                truncate(m.fitzpatrick_type || n8nData.ai_metrics?.fitzpatrick_type, 10),
+                null,
+                'n8n-gemini-v1',
+                'n8n Gemini Vision',
+                null,
+                JSON.stringify(scores),
+                JSON.stringify(n8nData.ai_metrics || m),
+                JSON.stringify({ summary: n8nData.summary || '', output: n8nData.output || '', keywords_used: n8nData.keywords_used || [] }),
+                sessionId,
+                JSON.stringify(n8nData.recommended_products || [])
+            ]);
+            savedId = saveResult.lastID;
+            console.log('💾 Analysis saved to DB, id:', savedId, '| session:', sessionId);
+        } catch (dbErr) {
+            console.error('⚠️ DB save failed (non-fatal):', dbErr.message);
+        }
+
+        // Simpan ke store dengan db_id
+        analysisResultStore.set(sessionId, {
+            status: 'done',
+            stage: 'Selesai',
+            data: { ...n8nData, db_id: savedId },
+            created_at: Date.now()
+        });
+        console.log('✅ Analysis done, session:', sessionId);
+    })
+    .catch(err => {
+        clearTimeout(n8nTimeout);
+        console.error('❌ n8n fetch error:', err.message);
+        analysisResultStore.set(sessionId, {
+            status: 'error',
+            stage: 'Gagal menghubungi AI',
+            error: err.message,
+            data: null,
+            created_at: Date.now()
+        });
+    });
+});
+
+// GET /api/v2/analyze/:sessionId/result — FE polling endpoint
+app.get('/api/v2/analyze/:sessionId/result', (req, res) => {
+    const sessionId = req.params.sessionId;
+    const entry = analysisResultStore.get(sessionId);
+
+    if (!entry) {
+        return res.status(404).json({ status: 'not_found', message: 'Session tidak ditemukan atau sudah expired' });
+    }
+
+    if (entry.status === 'processing') {
+        return res.json({ status: 'processing', stage: entry.stage, pct: entry.pct || 10, partial_data: entry.partial_data || null });
+    }
+
+    if (entry.status === 'error') {
+        return res.status(500).json({ status: 'error', error: entry.error });
+    }
+
+    // Done — return data dan hapus dari store
+    analysisResultStore.delete(sessionId);
+    return res.json({ status: 'done', data: entry.data });
+});
+
+// POST /api/v2/analyze/progress — n8n push progress ke sini
+app.post('/api/v2/analyze/progress', (req, res) => {
+    const { session_id, stage, pct, label, partial_data } = req.body || {};
+    if (!session_id) return res.status(400).json({ error: 'session_id required' });
+
+    const existing = analysisResultStore.get(session_id);
+
+    // Parse partial_data jika ada (dikirim sebagai string JSON dari n8n)
+    let parsedPartial = null;
+    if (partial_data) {
+        try { parsedPartial = typeof partial_data === 'string' ? JSON.parse(partial_data) : partial_data; }
+        catch { parsedPartial = null; }
+    }
+
+    analysisResultStore.set(session_id, {
+        ...(existing || {}),
+        status: 'processing',
+        stage: label || stage,
+        pct: pct || (existing?.pct || 10),
+        partial_data: parsedPartial || existing?.partial_data || null,
+        created_at: existing?.created_at || Date.now()
+    });
+
+    console.log(`📡 Progress push [${session_id}]: ${pct}% — ${label || stage}`);
+    res.json({ ok: true });
 });
 
 // ==================== PUBLIC ANALYSIS (DESKTOP/KIOSK) ====================
