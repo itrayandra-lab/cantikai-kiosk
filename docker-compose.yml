@@ -27,7 +27,7 @@ services:
       dockerfile: Dockerfile
     container_name: kios-frontend-pwa
     ports:
-      - "3002:80"
+      - "3003:80"
     restart: always
     logging:
       driver: "json-file"
